@@ -276,6 +276,7 @@ write.xlsx(st_drop_geometry(final), file = "data/TSCA_merged.xlsx", rowNames = F
 gdb_path <- "Z:/OCE Dropbox/Jeremy Proville/EDF/TSCA Mapping/TSCA Platform/TSCA_facilities.gpkg"
 st_write(final, gdb_path, driver = "GPKG", layer_options = "OVERWRITE=yes",append=FALSE)
 
+
 ###################################################################
 #QC & Old code
 ####################################
