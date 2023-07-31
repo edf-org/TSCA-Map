@@ -31,6 +31,7 @@ weights <- weights %>%
     . == "Cyclic Aliphatic Bromide Cluster (HBCD)" ~ "Hexabromocyclododecane",
     . == "Dibutyl phthalate (DBP)" ~ "Dibutyl phthalate",
     . == "N-Methyl-2-pyrrolidone (NMP)" ~ "N-Methyl-2-pyrrolidone",
+    . == "1,1-Dichloroethane" ~ "Ethylidene dichloride (1,1-Dichloroethane)",
     TRUE ~ .
   )))
 
