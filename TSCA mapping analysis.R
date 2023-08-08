@@ -1,3 +1,12 @@
+##############################################################
+### Data processing code for the Environmental Defense Fund's
+### TSCA Chemical Releases map
+###
+### Final release, 8/8/2023
+### by Jeremy Proville, Environmental Defense Fund (edf.org)
+### for more visit https://github.com/proville/TSCA-Map
+##############################################################
+
 rm(list = ls())
 library(readxl)
 library(maps)
@@ -303,6 +312,7 @@ gdb_path <- "Z:/OCE Dropbox/Jeremy Proville/EDF/TSCA Mapping/TSCA Platform/TSCA_
 st_write(final, gdb_path, driver = "GPKG", layer_options = "OVERWRITE=yes",append=FALSE)
 
 
+
 ###################################################################
 #QC code
 ####################################
@@ -341,9 +351,7 @@ for (col in names(raw)[sapply(raw, is.numeric)]) {
     theme(legend.position = "bottom") +
     labs(title = paste("Map of", col)) +
     map_size
-  
-  print(us_map)
-  #export to new exports folder when ready
+    print(us_map)
 }
 
 #filtering/QC
