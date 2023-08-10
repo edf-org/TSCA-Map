@@ -1,2 +1,7 @@
-# TSCA-Map
-Dataset creation for facilities displayed in EDF's TSCA Chemical Releases map
+# EDF's Chemical Exposure Action Map
+This page contains more detail on the code and methodology underlying EDF's Chemical Exposure Action Map, located at [TBD].
+
+
+
+
+
