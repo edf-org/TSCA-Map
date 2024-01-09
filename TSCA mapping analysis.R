@@ -63,7 +63,7 @@ raw$PoundsReleased_5yr_sum <- apply(raw[, c("PoundsReleased_2016", "PoundsReleas
 ####################################
 #Health outcome calcs
 #CANCER chemicals only
-Cancer <- c("1,1,2-Trichloroethane", "1,2-Dibromoethane (Ethylene dibromide)", "1,2-Dichloroethane", "1,2-Dichloropropane", "1,3-Butadiene", "1,4-Dichlorobenzene (p-Dichlorobenzene)", "1,4-Dioxane", "1-Bromopropane", "Asbestos (friable)", "Carbon tetrachloride", "Di(2-ethylhexyl) phthalate", "Formaldehyde", "Dichloromethane (Methylene chloride)", "Tetrachloroethylene", "Trichloroethylene")
+Cancer <- c("1,1,2-Trichloroethane", "1,2-Dibromoethane (Ethylene dibromide)", "1,2-Dichloroethane", "1,2-Dichloropropane", "1,3-Butadiene", "1,4-Dichlorobenzene (p-Dichlorobenzene)", "1,4-Dioxane", "1-Bromopropane", "Asbestos (friable)", "Carbon tetrachloride", "Di(2-ethylhexyl) phthalate", "Formaldehyde", "Dichloromethane (Methylene chloride)", "Tetrachloroethylene", "Trichloroethylene", "Tetrabromobisphenol A")
 
 raw$Cancer_PoundsReleased_5yr_min <- apply(raw, 1, function(row) {
   ifelse(row["Chemical"] %in% Cancer, min(as.numeric(row[c("PoundsReleased_2016", "PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020")]), na.rm = TRUE), 0)
