@@ -1,0 +1,326 @@
+---
+title: "Aereal Apportionment of TSCA Facilities for Chemical Exposure Action Map"
+author: "Paige Varner"
+date: "2024-04-09"
+output: html_document
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  eval = FALSE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(remotes)
+library(ArealApportionment)
+library(dplyr)
+library(sf)
+library(purrr)
+library(tidyr)
+library(DT)
+library(readxl)
+library(tidyverse)
+library(tidycensus)
+library(tigris)
+library(geos)
+library(data.table)
+```
+
+## Obtaining Census Data
+
+First we need to load the tidycensus package set our Census API key. You can obtain a census_api_key [here](https://api.census.gov/data/key_signup.html) and then use the census_api_key() function to establish a connection.
+
+```{r}
+library(tidycensus)
+census_api_key("12dca298b9c11d0892d574402e8ed39a12c09166", install=TRUE, overwrite = TRUE)
+readRenviron("~/.Renviron")
+```
+
+
+Variables we want for map (listed also in the README file or on the methods document). Also need to create a list of all states in U.S. because PullCensusData won't work without states listed.
+```{r}
+my_vars <- c(population = "B01001_001",  #Estimate!!Total: SEX BY AGE
+                    housing_units = "B25001_001", # Estimate!!Total HOUSING UNITS
+                    vacant_units = "B25002_003", #stimate!!Total:!!Vacant OCCUPANCY STATUS
+                    owner_occupied = "B25002_002", # Estimate!!Total:!!Occupied OCCUPANCY STATUS
+                    Male_age_5under = "B01001_003", # Estimate!!Total:!!Male:!!Under 5 years 
+                    Male_age_65_66 = "B01001_020", #Estimate!!Total:!!Male:!!65 and 66 years
+                    Male_age_67_69 = "B01001_021", # Estimate!!Total:!!Male:!!67 to 69 years 
+                    Male_age_70_74 = "B01001_022",  # Estimate!!Total:!!Male:!!70 to 74 years
+                    Male_age_75_79 = "B01001_023", # Estimate!!Total:!!Male:!!75 to 79 years
+                    Male_age_80_84 = "B01001_024",# Estimate!!Total:!!Male:!!80 to 84 years
+                    Male_age_85_plus = "B01001_025", #Estimate!!Total:!!Male:!!85 years and over
+                    F_age_5under = "B01001_027",    # Estimate!!Total:!!Female:!! Under 5 years
+                    F_age_15_17 = "B01001_030",   # Estimate!!Total:!!Female:!! 15 to 17 years
+                    F_age_18_19 = "B01001_031",    # Estimate!!Total:!!Female:!! 18 and 19 years
+                    F_age_20 = "B01001_032",     # Estimate!!Total:!!Female:!! 20 years
+                    F_age_21 = "B01001_033",    # Estimate!!Total:!!Female:!! 21 years
+                    F_age_22_24 = "B01001_034",     # Estimate!!Total:!!Female:!!22 to 24 years
+                    F_age_25_29 = "B01001_035",     # Estimate!!Total:!!Female:!!25 to 29 years
+                    F_age_30_34 = "B01001_036",     # Estimate!!Total:!!Female:!!30 to 34 years
+                    F_age_35_39 = "B01001_037",      # Estimate!!Total:!!Female:!!35 to 39 years
+                    F_age_40_44 = "B01001_038",      # Estimate!!Total:!!Female:!!40 to 44 years
+                    F_age_45_49 = "B01001_039",      # Estimate!!Total:!!Female:!!45 to 49 years
+                    F_age_65_66 = "B01001_044", # Estimate!!Total:!!Female:!!65 and 66 years
+                    F_age_67_69 = "B01001_045", # Estimate!!Total:!!Female:!!67 to 69 years
+                    F_age_70_74 = "B01001_046", # Estimate!!Total:!!Female:!!70 to 74 years
+                    F_age_75_79 = "B01001_047", #Estimate!!Total:!!Female:!!75 to 79 years
+                    F_age_80_84 = "B01001_048",      # Estimate!!Total:!!Female:!!80 to 84 years
+                    F_age_85_plus = "B01001_049",    # Estimate!!Total:!!Female:!!85 years and over
+                    white_alone = "B02001_002",      # Estimate!!Total:!!White alone
+                    black_alone = "B02001_003",      # Estimate!!Total:!!Black or African American alone
+                    Amer_indian = "B02001_004",      # Estimate!!Total:!!American Indian and Alaska Native alone
+                    Asian = "B02001_005",            # Estimate!!Total:!!Asian alone
+                    Pacific_islander = "B02001_006", # Estimate!!Total:!!Native Hawaiian and Other Pacific Islander alone
+                    Other_race = "B02001_007",        # Estimate!!Total:!!Some other race alone 
+                    Two_or_more_races = "B02001_008", # Estimate!!Total:!!Two or more races:  
+                    hispanic_pop = "B03003_003",      # Estimate!!Total:!!Hispanic or Latino  
+                    median_house_value = "B25077_001",# Estimate!!Median value (dollars)  
+                    medincome = "B19013_001",         # Estimate!!Median household income in the past 12 months
+                    Total_Education = "B15003_001",   # Estimate!!Total: EDUCATIONAL ATTAINMENT FOR THE POPULATION 25 YEARS AND OVER
+                    overHS1 = "B15003_017", # Estimate!!Total:!!Regular high school diploma
+                    overHS2 = "B15003_018", # Estimate!!Total:!!GED or alternative credential
+                    overHS3 = "B15003_019", # Estimate!!Total:!!Some college, less than 1 year
+                    overHS4 = "B15003_020", # Estimate!!Total:!!Some college, 1 or more years, no degree
+                    overHS5 = "B15003_021", # Estimate!!Total:!!Associate's degree
+                    overHS6 = "B15003_022", # Estimate!!Total:!!Bachelor's degree
+                    overHS7 = "B15003_023", # Estimate!!Total:!!Master's degree
+                    overHS8 = "B15003_024", # Estimate!!Total:!!Professional school degree 
+                    overHS9 = "B15003_025" # Estimate!!Total:!!Doctorate degree
+      )
+
+length(my_vars)
+
+#need input for PopVariable that provides info on Census variables being population (1) or income (0) for CensusBuffer function
+my_pops = c(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1)
+
+states = c("AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY")
+```
+
+
+We are now ready to run the function and get the ACS data at the block group level for all states
+
+```{r,include=FALSE}
+census_bg <- PullCensusData(EndYr = 2020, acsGeog = "block group", variableCodes = my_vars, surveyType="acs5", EPSGcode=3857, stateList = states)
+```
+
+
+We also want to pull county level data for comparison. This can help us understand if the communities near TRI facilities have different demographic makeups from the county has a whole.
+
+```{r,include=FALSE}
+census_county <- PullCensusData(EndYr = 2020, acsGeog = "county", variableCodes = my_vars, surveyType="acs5", EPSGcode=3857, stateList = states)
+```
+
+We now have Census data for all the block groups, as well as the geometry of the block group polygons which have been projected into the metric coordinate system WGS 84. The getACS function produces estimates (column name with the suffix E) and measures of error (column names with the suffix M).
+
+
+## Downloading Risk Screening Environmental Indicators (RSEI) Data
+
+Next we want to obtain the locations of facilities reporting emissions under the Toxic Release Inventory (TRI) program, as well as the types of chemicals released and their hazard scores. We can get these from the publicly available RSEI data. There are two ways to access these data. First, we would like to store the data locally for future use since the download can be time consuming, so we will use the GetRSEI function to download and store the most recent data to the folder of our choosing. This can be done with the following code:
+
+```{r,eval=FALSE}
+myworkingdirectory <- getwd()
+DataList <- GetRSEIData(rseiversion = "v2311", savetodisk = T, directory = myworkingdirectory, seconds=500)
+```
+
+5 RSEI tables are returned in this list:
+1. Facility  - contains information about each facility that is part of the TRI program.
+2. Chemicals - a list of all chemicals tracked in the TRI program.
+3. Submissions - contains Form R information submitted to TRI, including the year of the submission.
+4. Elements - contains the calculated results for each release. There can be multiple elements records for each release. 
+5. Releases -  contains data for each chemical release. There can be multiple release records per submission record.
+
+Note that in the above code, the 5 RSEI tables downloaded are returned in a list and assigned to the global environment, and also saved to the directory provided if savetodisk is TRUE. This allows users to then access the files locally for future operations. If the download times out before it is completed, the seconds argument can be extended to provide more time for a slow download.
+
+## Searching the RSEI Database
+
+The RSEISearch function is very flexible, with lots of optional arguments to allows users to narrow in on data from the location, time period, industry sector, or facilities they are interested in. Here, we are interested in facilities in the 5 years between 2017 and 2021 (the most recent year of data). We want to project the facility locations into the metric WGS 84 coordinate system so that we can overlay facility locations on our census block data.
+
+We are searching and filtering for facilities that are releasing the 28 high priority chemicals undergoing TSCA assessment and management (the ones that are reported in TRI). We are searching based on the chemical numbers rather than names, which can be found here: https://www.epa.gov/rsei/rsei-data-dictionary-chemical-data.
+
+```{r}
+chems = c("273", "630", "41", "115", "631", "225", "398", "531", "567", "215", "193", "80", "222", "182", "315", "229", "566", "613", "195", "467", "214", "3", "12", "32", "586", "383", "298", "223")
+
+facilities_TSCA <- RSEISearch(DownloadRSEI= FALSE, RSEIpath = paste(getwd(),"RSEI_Public_Release_Data_V2311_RY2021",sep="/"), RSEIversion="v2311", StartYr=2017, EndYr=2021, rsei_Chem_Numbers  = chems, returnLocation = T, projectTo = 3857, wider=TRUE)
+
+```
+
+We can save the 2 objects in the list as dataframes. The first contains all the data, including emissions data and hazard scores, while the second contains only locational data. We can also check the coordinate system
+
+```{r}
+facilities_emissions <- facilities_TSCA[[1]]
+glimpse(facilities_emissions)
+
+facilities_locations <- facilities_TSCA[[2]]
+glimpse(facilities_locations)
+print(st_crs(facilities_locations))
+```
+
+
+## Calculating Community Characteristics via Areal Apportionment Method 
+
+We want to overlay the facility emissions data on the block group level demographic data and determine the make up of communities within 10km of a TRI reporting facility. We want to compare those communities with the county as a whole to determine if communities near TRI facilities are more likely to be non-white or have a lower median income. To do this we can use the CensusBuffer function. We provide a vector of radii for our buffers in meters, the object with projected block group data, and the RSEI facility location information, which is a spatial dataframe (sf object) that contains the facility locations projected to the WGS 84 coordinate system. We are setting runTract to false but runCounty to true because we would like to compare demographics to the total estimates for counties, and we provide the projected county ACS data. We also need to provide the vector of ACS variables with their names. Finally, we have the option to provide the rsei emissions dataframe. If this is included, these data are merged into the final output so that each row is a chemical-facility combination, and the columns include the summed emissions and associated scores as well as the demography in each buffer. If this is not provided, the output of this function is a wide format dataframe with a row for each facility and in the columns the tabulated ACS variables within each buffer distance of that facility location. If runTract or runCounty are true, it also includes the county or tract totals for each variable for comparison. 
+
+```{r}
+
+facilities_TSCA_appor <- CensusBuffer(buffer_vec = 10000, census_dat_proj= census_bg, FacilityLocation_m = facilities_locations, runCounty = TRUE, county_dat_proj = census_county, variableNames = my_vars, EmissionData = facilities_emissions, PopVariable = my_pops)
+```
+
+The output of this final function is a large table that contains a ton of information, including:
+
+* Information about the chemical released, including the name, total emmissions per year, and associated RSEI scores
+
+* Information about the facility that released the chemical, including the name, location, and TRIFID number.
+
+* Information about the demographic composition near the facility (in this case, within 10km). 
+
+* Information about the demographic make up of the census tract and county where each facility is located, for comparative purposes.
+
+
+## Removing unneeded columns and creating summary columns specific for the map
+
+We want to include population data as proportional to the population within the county or 10km. We also want to create variables for the map, such as females of reproductive age, which necessitates addition of multiple Census variables. 
+
+```{r}
+#remove the [1] from the census numbers
+
+facilities_TSCA_appor[] <- lapply(facilities_TSCA_appor, function(x) gsub("\\s\\[1\\]$", "", x))
+
+#making Census columns numerics so we can add many of them together below
+
+cols_to_numeric = c("Male_age_65_66E_10km","Male_age_67_69E_10km","Male_age_70_74E_10km","Male_age_75_79E_10km","Male_age_80_84E_10km","Male_age_85_plusE_10km","F_age_65_66E_10km","F_age_67_69E_10km","F_age_70_74E_10km","F_age_75_79E_10km","F_age_80_84E_10km","F_age_85_plusE_10km", "F_age_5underE_10km","Male_age_5underE_10km", "F_age_15_17E_10km","F_age_18_19E_10km","F_age_20E_10km","F_age_21E_10km","F_age_22_24E_10km", "F_age_25_29E_10km", "F_age_30_34E_10km", "F_age_35_39E_10km", "F_age_40_44E_10km", "F_age_45_49E_10km", "AsianE_10km", "Pacific_islanderE_10km", "black_aloneE_10km", "Amer_indianE_10km", "Other_raceE_10km", "Two_or_more_racesE_10km", "overHS1E_10km", "overHS2E_10km", "overHS3E_10km", "overHS4E_10km", "overHS5E_10km", "overHS6E_10km", "overHS7E_10km", "overHS8E_10km", "overHS9E_10km", "medincomeE_10km", "median_house_valueE_10km", "owner_occupiedE_10km", "housing_unitsE_10km", "vacant_unitsE_10km", "populationE_10km", "white_aloneE_10km", "hispanic_popE_10km", "Total_EducationE_10km", "Male_age_65_66E_county", "Male_age_67_69E_county", "Male_age_70_74E_county",
+  "Male_age_75_79E_county", "Male_age_80_84E_county", "Male_age_85_plusE_county",
+  "F_age_65_66E_county", "F_age_67_69E_county", "F_age_70_74E_county",
+  "F_age_75_79E_county", "F_age_80_84E_county", "F_age_85_plusE_county",
+  "F_age_5underE_county", "Male_age_5underE_county", "F_age_15_17E_county",
+  "F_age_18_19E_county", "F_age_20E_county", "F_age_21E_county",
+  "F_age_22_24E_county", "F_age_25_29E_county", "F_age_30_34E_county",
+  "F_age_35_39E_county", "F_age_40_44E_county", "F_age_45_49E_county",
+  "AsianE_county", "Pacific_islanderE_county", "black_aloneE_county",
+  "Amer_indianE_county", "Other_raceE_county", "Two_or_more_racesE_county",
+  "overHS1E_county", "overHS2E_county", "overHS3E_county", "overHS4E_county",
+  "overHS5E_county", "overHS6E_county", "overHS7E_county", "overHS8E_county",
+  "overHS9E_county", "medincomeE_county", "median_house_valueE_county",
+  "owner_occupiedE_county", "housing_unitsE_county", "vacant_unitsE_county",
+  "populationE_county", "white_aloneE_county", "hispanic_popE_county",
+  "Total_EducationE_county")
+
+facilities_TSCA_appor[, cols_to_numeric] <- lapply(cols_to_numeric, function(x) as.numeric(facilities_TSCA_appor[[x]]))
+
+#removing NAs from the previous columns or else summary columns won't work
+facilities_TSCA_appor <- facilities_TSCA_appor[complete.cases(facilities_TSCA_appor[, cols_to_numeric]), ]
+
+#create summary columns
+  facilities_TSCA_appor_sum <- facilities_TSCA_appor %>% 
+    mutate(
+      ## Combine age groups to create an "Over 64" group for 10km
+      Over64_Per_10km = (Male_age_65_66E_10km + Male_age_67_69E_10km +Male_age_70_74E_10km +
+                      Male_age_75_79E_10km + Male_age_80_84E_10km + Male_age_85_plusE_10km +
+                      F_age_65_66E_10km + F_age_67_69E_10km + F_age_70_74E_10km +
+                      F_age_75_79E_10km + F_age_80_84E_10km + F_age_85_plusE_10km),
+      ## Combine age groups to create an "Under 5" group for 10km
+      Under5_Per_10km = (F_age_5underE_10km + Male_age_5underE_10km),
+      ## Combin age groups to create a group for "Females of Reproductive Age" (15-49) for 10km
+      F_Reprod_15_49_10km = (F_age_15_17E_10km + F_age_18_19E_10km + F_age_20E_10km + F_age_21E_10km +
+                          F_age_22_24E_10km + F_age_25_29E_10km + F_age_30_34E_10km + F_age_35_39E_10km +
+                          F_age_40_44E_10km + F_age_45_49E_10km),
+      ## Combine Asian and Pacific Islander population for 10km
+      Asian_PacIs_10km = (AsianE_10km + Pacific_islanderE_10km), 
+      ## Create a variable to track nonwhite population for 10km
+      Nonwhite_Pop_10km = (black_aloneE_10km + Amer_indianE_10km + AsianE_10km + Pacific_islanderE_10km + Other_raceE_10km + Two_or_more_racesE_10km),
+      ## Create a variable to track those with at least a high school degree for 10km
+      Over_HS_tot_10km = (overHS1E_10km + overHS2E_10km + overHS3E_10km + overHS4E_10km + overHS5E_10km + overHS6E_10km +
+                        overHS7E_10km + overHS8E_10km +overHS9E_10km),
+     ## Combine age groups to create an "Over 64" group for county
+      Over64_Per_county = (Male_age_65_66E_county + Male_age_67_69E_county +Male_age_70_74E_county +
+                      Male_age_75_79E_county + Male_age_80_84E_county + Male_age_85_plusE_county +
+                      F_age_65_66E_county + F_age_67_69E_county + F_age_70_74E_county +
+                      F_age_75_79E_county + F_age_80_84E_county + F_age_85_plusE_county),
+      ## Combine age groups to create an "Under 5" group for county
+      Under5_Per_county = (F_age_5underE_county + Male_age_5underE_county),
+      ## Combine age groups to create a group for "Females of Reproductive Age" (15-49) for county
+      F_Reprod_15_49_county = (F_age_15_17E_county + F_age_18_19E_county + F_age_20E_county + F_age_21E_county +
+                          F_age_22_24E_county + F_age_25_29E_county + F_age_30_34E_county + F_age_35_39E_county +
+                          F_age_40_44E_county + F_age_45_49E_county),
+      ## Combine Asian and Pacific Islander population for county
+      Asian_PacIs_county = (AsianE_county + Pacific_islanderE_county),
+      ## Create a variable to track nonwhite population for county
+      Nonwhite_Pop_county = (black_aloneE_county + Amer_indianE_county + AsianE_county + Pacific_islanderE_county + Other_raceE_county + Two_or_more_racesE_county),
+      ## Create a variable to track those with at least a high school degree for county
+      Over_HS_tot_county = (overHS1E_county + overHS2E_county + overHS3E_county + overHS4E_county + overHS5E_county + overHS6E_county + overHS7E_county + overHS8E_county +overHS9E_county))
+  
+
+# calculate proportions within the TRI facility buffer for each value
+    facilities_TSCA_appor_sum$OwnOccPercent_10km <- facilities_TSCA_appor_sum$owner_occupiedE_10km / facilities_TSCA_appor_sum$housing_unitsE_10km
+    facilities_TSCA_appor_sum$VacPercent_10km <- facilities_TSCA_appor_sum$vacant_unitsE_10km / facilities_TSCA_appor_sum$housing_unitsE_10km
+    facilities_TSCA_appor_sum$WhtPercent_10km <- facilities_TSCA_appor_sum$white_aloneE_10km / facilities_TSCA_appor_sum$populationE_10km
+    facilities_TSCA_appor_sum$BlkPercent_10km <- facilities_TSCA_appor_sum$black_aloneE_10km / facilities_TSCA_appor_sum$populationE_10km
+    facilities_TSCA_appor_sum$HispPercent_10km <- facilities_TSCA_appor_sum$hispanic_popE_10km / facilities_TSCA_appor_sum$populationE_10km
+    facilities_TSCA_appor_sum$AsianPercent_10km <- facilities_TSCA_appor_sum$Asian_PacIs_10km / facilities_TSCA_appor_sum$populationE_10km
+    facilities_TSCA_appor_sum$AmerIndPercent_10km <- facilities_TSCA_appor_sum$Amer_indianE_10km / facilities_TSCA_appor_sum$populationE_10km
+    facilities_TSCA_appor_sum$NWPercent_10km <- facilities_TSCA_appor_sum$Nonwhite_Pop_10km / facilities_TSCA_appor_sum$populationE_10km
+    facilities_TSCA_appor_sum$EduPercent_10km <- 1- (as.numeric(facilities_TSCA_appor_sum$Over_HS_tot_10km))/as.numeric(facilities_TSCA_appor_sum$Total_EducationE_10km)
+    facilities_TSCA_appor_sum$Over64Percent_10km <- facilities_TSCA_appor_sum$Over64_Per_10km / facilities_TSCA_appor_sum$populationE_10km
+    facilities_TSCA_appor_sum$Under5Percent_10km <- facilities_TSCA_appor_sum$Under5_Per_10km / facilities_TSCA_appor_sum$populationE_10km
+    facilities_TSCA_appor_sum$ReprodFemPercent_10km <- facilities_TSCA_appor_sum$F_Reprod_15_49_10km / facilities_TSCA_appor_sum$populationE_10km   
+    
+facilities_TSCA_appor_sum$OwnOccPercent_county <- facilities_TSCA_appor_sum$owner_occupiedE_county / facilities_TSCA_appor_sum$housing_unitsE_county
+facilities_TSCA_appor_sum$VacPercent_county <- facilities_TSCA_appor_sum$vacant_unitsE_county / facilities_TSCA_appor_sum$housing_unitsE_county
+facilities_TSCA_appor_sum$WhtPercent_county <- facilities_TSCA_appor_sum$white_aloneE_county / facilities_TSCA_appor_sum$populationE_county
+facilities_TSCA_appor_sum$BlkPercent_county <- facilities_TSCA_appor_sum$black_aloneE_county / facilities_TSCA_appor_sum$populationE_county
+facilities_TSCA_appor_sum$HispPercent_county <- facilities_TSCA_appor_sum$hispanic_popE_county / facilities_TSCA_appor_sum$populationE_county
+facilities_TSCA_appor_sum$AsianPercent_county <- facilities_TSCA_appor_sum$Asian_PacIs_county / facilities_TSCA_appor_sum$populationE_county
+facilities_TSCA_appor_sum$AmerIndPercent_county <- facilities_TSCA_appor_sum$Amer_indianE_county / facilities_TSCA_appor_sum$populationE_county
+facilities_TSCA_appor_sum$NWPercent_county <- facilities_TSCA_appor_sum$Nonwhite_Pop_county / facilities_TSCA_appor_sum$populationE_county
+facilities_TSCA_appor_sum$EduPercent_county <- 1 - (as.numeric(facilities_TSCA_appor_sum$Over_HS_tot_county)) / as.numeric(facilities_TSCA_appor_sum$Total_EducationE_county)
+facilities_TSCA_appor_sum$Over64Percent_county <- facilities_TSCA_appor_sum$Over64_Per_county / facilities_TSCA_appor_sum$populationE_county
+facilities_TSCA_appor_sum$Under5Percent_county <- facilities_TSCA_appor_sum$Under5_Per_county / facilities_TSCA_appor_sum$populationE_county
+facilities_TSCA_appor_sum$ReprodFemPercent_county <- facilities_TSCA_appor_sum$F_Reprod_15_49_county / facilities_TSCA_appor_sum$populationE_county
+
+
+#select columns we want in final df
+
+final_col = c("Chemical", "CAS", "ChemicalNumber", "FacilityName", "FacilityID", 
+                      "Street", "City", "County", "State", "ZIPCode", "Longitude", 
+                      "Latitude", "ModeledNAICS", "PoundsReleased_2017", "PoundsReleased_2018", 
+                      "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", 
+                      "geometry.y_10km", "geometry_county", "GEOID_county", "NAME_county", 
+                      "County.y_county", "Counts_county", "medincomeE_10km", 
+                      "median_house_valueE_10km", "populationE_10km", "medincomeE_county", 
+                      "median_house_valueE_county", "populationE_county", 
+                      "OwnOccPercent_10km", "VacPercent_10km", "WhtPercent_10km", 
+                      "BlkPercent_10km", "HispPercent_10km", "AsianPercent_10km", 
+                      "AmerIndPercent_10km", "NWPercent_10km", "EduPercent_10km", 
+                      "Over64Percent_10km", "Under5Percent_10km", "ReprodFemPercent_10km", 
+                      "OwnOccPercent_county", "VacPercent_county", "WhtPercent_county", 
+                      "BlkPercent_county", "HispPercent_county", "AsianPercent_county", 
+                      "AmerIndPercent_county", "NWPercent_county", "EduPercent_county", 
+                      "Over64Percent_county", "Under5Percent_county", "ReprodFemPercent_county", 
+                      "housing_unitsE_county", "housing_unitsE_10km")
+
+final_TSCA_df = facilities_TSCA_appor_sum %>% select(all_of(final_col))
+
+```
+
+
+## Save file
+```{r}
+write.csv(final_TSCA_df, file = "~/TSCA/CRA/TSCA-Map/data/DemographicImpactsofTRIv2.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
