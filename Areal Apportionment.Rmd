@@ -28,6 +28,7 @@ library(tidycensus)
 library(tigris)
 library(geos)
 library(data.table)
+library(insight)
 ```
 
 ## Obtaining Census Data
@@ -124,8 +125,73 @@ Next we want to obtain the locations of facilities reporting emissions under the
 
 ```{r,eval=FALSE}
 myworkingdirectory <- getwd()
-DataList <- GetRSEIData(rseiversion = "v2311", savetodisk = T, directory = myworkingdirectory, seconds=500)
+DataList <- GetRSEIData(rseiversion = "v2312", savetodisk = TRUE, directory = myworkingdirectory, seconds=500)
 ```
+
+### The GetRSEIData() function is not up to date in the Aereal Apportionment package, so implementing a work around to create the function from scratch to pull updated version of RSEI data
+```{r}
+GetRSEIData2 <- function(rseiversion = "v2311", savetodisk = FALSE, directory = NULL, seconds=500){
+  
+  if(rseiversion == "v2312"){
+    
+    # Extends download time to 500 seconds to prevent timing out
+    options(timeout = seconds)
+    
+    # Opens a temporary file to store downloaded zip file in
+    temp <- tempfile()
+    
+    #link to download zip file:
+    download.file("https://gaftp.epa.gov/rsei/Current_Version/V2312_RY2022/Public_Release_Data/RSEIv2312_Public_Release_Data.zip",temp, quiet=FALSE)
+    
+    print_color("Download complete. Unzipping Files.\n", "green")
+    
+    # unzips and extracts each csv file necessary for RSEI data pull function
+    Chems <- read.csv(unz(description=temp, filename = "chemical_data_rsei_v2312.csv"))
+    Facility <- read.csv(unz(description=temp, filename = "facility_data_rsei_v2312.csv")) # has all Facility info
+    Submission <- read.csv(unz(description=temp, filename = "submissions_data_rsei_v2312.csv"))# - TRI data by year for facility. CAS links to chem table.  note that there is no s on submission for 23.10 data
+    Elements <- read.csv(unz(description=temp, filename = "elements_data_rsei_v2312.csv"))  #RSEI scores, links to release table
+    Release <- read.csv(unz(description=temp, filename = "releases_data_rsei_v2312.csv"))  # links to submission, has pounds and media
+    
+    # closes link
+    unlink(temp)
+    
+    
+    # sets folder name for storage
+    folder <- "RSEI_Public_Release_Data_V2312_RY2022"
+    
+    if(savetodisk ==T ){
+      print_color("Saving files to disk.\n","green")
+      currDir <- getwd()
+      setwd(directory)
+      dir.create(folder)  # create folder to store info in. 
+      setwd(paste(directory,folder,sep="/"))
+      write.csv(Chems, "chemical_data_rsei_v2312.csv",row.names=FALSE)  # change naming to be dynamic.
+      write.csv(Facility,"facility_data_rsei_v2312.csv",row.names=FALSE)
+      write.csv(Submission,"submissions_data_rsei_v2312.csv",row.names=FALSE)
+      write.csv(Elements, "elements_data_rsei_v2312.csv",row.names=FALSE)
+      write.csv(Release,"releases_data_rsei_v2312.csv",row.names=FALSE)
+      setwd(currDir)  # set working directory back to what it was before
+    }
+  } # close if current version statement
+ 
+  # assign data frames to global environment
+  assign('Chems',Chems,envir=.GlobalEnv)
+  assign('Facility',Facility,envir=.GlobalEnv)
+  assign('Submission',Submission,envir=.GlobalEnv)
+  assign('Elements',Elements,envir=.GlobalEnv)
+  assign('Release', Release,envir=.GlobalEnv)
+  
+  return(list(Chems,Facility,Submission, Elements, Release))
+  
+} # close function
+```
+
+### run new function
+```{r}
+myworkingdirectory <- getwd()
+DataList <- GetRSEIData2(rseiversion = "v2312", savetodisk = TRUE, directory = myworkingdirectory, seconds=500)
+```
+
 
 5 RSEI tables are returned in this list:
 1. Facility  - contains information about each facility that is part of the TRI program.
@@ -145,7 +211,7 @@ We are searching and filtering for facilities that are releasing the 28 high pri
 ```{r}
 chems = c("273", "630", "41", "115", "631", "225", "398", "531", "567", "215", "193", "80", "222", "182", "315", "229", "566", "613", "195", "467", "214", "3", "12", "32", "586", "383", "298", "223")
 
-facilities_TSCA <- RSEISearch(DownloadRSEI= FALSE, RSEIpath = paste(getwd(),"RSEI_Public_Release_Data_V2311_RY2021",sep="/"), RSEIversion="v2311", StartYr=2017, EndYr=2021, rsei_Chem_Numbers  = chems, returnLocation = T, projectTo = 3857, wider=TRUE)
+facilities_TSCA <- RSEISearch(DownloadRSEI= FALSE, RSEIpath = paste(getwd(),"RSEI_Public_Release_Data_V2312_RY2022",sep="/"), RSEIversion="v2312", StartYr=2018, EndYr=2022, rsei_Chem_Numbers  = chems, returnLocation = T, projectTo = 3857, wider=TRUE)
 
 ```
 
@@ -286,8 +352,8 @@ facilities_TSCA_appor_sum$ReprodFemPercent_county <- facilities_TSCA_appor_sum$F
 
 final_col = c("Chemical", "CAS", "ChemicalNumber", "FacilityName", "FacilityID", 
                       "Street", "City", "County", "State", "ZIPCode", "Longitude", 
-                      "Latitude", "ModeledNAICS", "PoundsReleased_2017", "PoundsReleased_2018", 
-                      "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", 
+                      "Latitude", "ModeledNAICS", "PoundsReleased_2018", "PoundsReleased_2019", 
+                      "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022", 
                       "geometry.y_10km", "geometry_county", "GEOID_county", "NAME_county", 
                       "County.y_county", "Counts_county", "medincomeE_10km", 
                       "median_house_valueE_10km", "populationE_10km", "medincomeE_county", 
@@ -309,7 +375,7 @@ final_TSCA_df = facilities_TSCA_appor_sum %>% select(all_of(final_col))
 
 ## Save file
 ```{r}
-write.csv(final_TSCA_df, file = "~/TSCA/CRA/TSCA-Map/data/DemographicImpactsofTRIv2.csv")
+write.csv(final_TSCA_df, file = "~/TSCA/Fenceline Map/TSCA-Map/data/DemographicImpactsofTRIv2.csv")
 ```
 
 
