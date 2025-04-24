@@ -56,12 +56,11 @@ Asthma_weights <- Asthma_weights[complete.cases(Asthma_weights), ]
 
 ####################################
 #Calcs for releases across years
-raw$PoundsReleased_5yr_min <- apply(raw[, c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")], MARGIN = 1, FUN = min, na.rm = TRUE)
+raw$PoundsReleased_5yr_min <- apply(raw[, c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")], MARGIN = 1, FUN = min, na.rm = TRUE)
 
-raw$PoundsReleased_5yr_max <- apply(raw[, c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")], MARGIN = 1, FUN = max, na.rm = TRUE)
+raw$PoundsReleased_5yr_max <- apply(raw[, c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")], MARGIN = 1, FUN = max, na.rm = TRUE)
 
-#Sum field needs to be the max value across all 5 years, but then summed later across chemicals (hence the different field name)
-raw$PoundsReleased_5yr_sum <- apply(raw[, c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")], MARGIN = 1, FUN = max, na.rm = TRUE)
+raw$PoundsReleased_5yr_sum <- apply(raw[, c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")], MARGIN = 1, FUN = sum, na.rm = TRUE)
 
 ####################################
 #Health outcome calcs
@@ -69,22 +68,34 @@ raw$PoundsReleased_5yr_sum <- apply(raw[, c("PoundsReleased_2017", "PoundsReleas
 Cancer <- c("1,1,2-Trichloroethane", "1,2-Dibromoethane (Ethylene dibromide)", "1,2-Dichloroethane", "1,2-Dichloropropane", "1,3-Butadiene", "1,4-Dichlorobenzene (p-Dichlorobenzene)", "1,4-Dioxane", "1-Bromopropane", "Asbestos (friable)", "Carbon tetrachloride", "Di(2-ethylhexyl) phthalate", "Formaldehyde", "Dichloromethane (Methylene chloride)", "Tetrachloroethylene", "Trichloroethylene", "Tetrabromobisphenol A", "Acetaldehyde", "Acrylonitrile", "Aniline", "Vinyl chloride", "4,4'-Methylenebis(2-chloroaniline)")
 
 raw$Cancer_PoundsReleased_5yr_min <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Cancer, min(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Cancer, min(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
 raw$Cancer_PoundsReleased_5yr_max <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Cancer, max(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Cancer, max(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
 
 raw$Cancer_PoundsReleased_5yr_sum <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Cancer, max(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Cancer, sum(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
 
-raw$Cancer_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
-  lbs<-as.numeric(x[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")])
-  max_value <- max(lbs, na.rm = TRUE)  # Get the maximum value
+raw$Cancer_weighted_5yr_max <- apply(raw, MARGIN = 1, FUN = function(x) {
+  lbs<-as.numeric(x[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")])
+  max_value <- max(lbs, na.rm = TRUE)  # Get the max
   chemical <- x[["Chemical"]]  # Get the corresponding 'Chemical' value 
   weight <- Cancer_weights$Weight[Cancer_weights$Chemical.Name == chemical]  # Lookup the weight based on 'Chemical' value
   result=as.numeric(max_value * weight)
+  if (length(result) == 0) {
+    result <- 0
+  }
+  return(result)
+})
+
+raw$Cancer_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
+  lbs<-as.numeric(x[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")])
+  sum_value <- sum(lbs, na.rm = TRUE)  # Get the sum
+  chemical <- x[["Chemical"]]  # Get the corresponding 'Chemical' value 
+  weight <- Cancer_weights$Weight[Cancer_weights$Chemical.Name == chemical]  # Lookup the weight based on 'Chemical' value
+  result=as.numeric(sum_value * weight)
   if (length(result) == 0) {
     result <- 0
   }
@@ -96,68 +107,100 @@ raw$Cancer_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
 Dev <- c("1,2-Dichloroethane", "1,2-Dibromoethane (Ethylene dibromide)", "1,2-Dichloropropane", "1,3-Butadiene", "1,4-Dioxane", "1-Bromopropane", "Dibutyl phthalate", "Di(2-ethylhexyl) phthalate", "N-Methyl-2-pyrrolidone", "Tetrachloroethylene", "Trichloroethylene", "Hexabromocyclododecane", "Acrylonitrile", "Vinyl chloride")
 
 raw$Dev_PoundsReleased_5yr_min <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Dev, min(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Dev, min(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
+
 raw$Dev_PoundsReleased_5yr_max <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Dev, max(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Dev, max(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
 
 raw$Dev_PoundsReleased_5yr_sum <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Dev, max(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Dev, sum(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
 
-raw$Dev_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
-  lbs<-as.numeric(x[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")])
-  max_value <- max(lbs, na.rm = TRUE)  # Get the maximum value
-  chemical <- x[["Chemical"]]  # Get the corresponding 'Chemical' value 
-  weight <- Dev_weights$Weight.1[Dev_weights$Chemical.Name.1 == chemical]  # Lookup the weight based on 'Chemical' value
-  result=as.numeric(max_value * weight)
+raw$Dev_weighted_5yr_max <- apply(raw, MARGIN = 1, FUN = function(x) {
+  lbs <- as.numeric(x[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")])
+  max_value <- max(lbs, na.rm = TRUE)
+  chemical <- x[["Chemical"]]
+  weight <- Dev_weights$Weight[Dev_weights$Chemical.Name == chemical]
+  result <- as.numeric(max_value * weight)
   if (length(result) == 0) {
     result <- 0
   }
   return(result)
 })
+
+raw$Dev_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
+  lbs <- as.numeric(x[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")])
+  sum_value <- sum(lbs, na.rm = TRUE)
+  chemical <- x[["Chemical"]]
+  weight <- Dev_weights$Weight[Dev_weights$Chemical.Name == chemical]
+  result <- as.numeric(sum_value * weight)
+  if (length(result) == 0) {
+    result <- 0
+  }
+  return(result)
+})
+
 
 #ASTHMA chemicals only
 Asthma <- c("1,2-Dibromoethane (Ethylene dibromide)", "Formaldehyde", "Phthalic anhydride", "Acetaldehyde")
 
 raw$Asthma_PoundsReleased_5yr_min <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Asthma, min(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Asthma, min(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
+
 raw$Asthma_PoundsReleased_5yr_max <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Asthma, max(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Asthma, max(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
 
 raw$Asthma_PoundsReleased_5yr_sum <- apply(raw, 1, function(row) {
-  ifelse(row["Chemical"] %in% Asthma, max(as.numeric(row[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")]), na.rm = TRUE), 0)
+  ifelse(row["Chemical"] %in% Asthma, sum(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
 })
 
-raw$Asthma_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
-  lbs<-as.numeric(x[c("PoundsReleased_2017", "PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021")])
-  max_value <- max(lbs, na.rm = TRUE)  # Get the maximum value
-  chemical <- x[["Chemical"]]  # Get the corresponding 'Chemical' value 
-  weight <- Asthma_weights$Weight.2[Asthma_weights$Chemical.Name.2 == chemical]  # Lookup the weight based on 'Chemical' value
-  result=as.numeric(max_value * weight)
+raw$Asthma_weighted_5yr_max <- apply(raw, MARGIN = 1, FUN = function(x) {
+  lbs <- as.numeric(x[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")])
+  max_value <- max(lbs, na.rm = TRUE)
+  chemical <- x[["Chemical"]]
+  weight <- Asthma_weights$Weight[Asthma_weights$Chemical.Name == chemical]
+  result <- as.numeric(max_value * weight)
   if (length(result) == 0) {
     result <- 0
   }
   return(result)
 })
+
+raw$Asthma_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
+  lbs <- as.numeric(x[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")])
+  sum_value <- sum(lbs, na.rm = TRUE)
+  chemical <- x[["Chemical"]]
+  weight <- Asthma_weights$Weight[Asthma_weights$Chemical.Name == chemical]
+  result <- as.numeric(sum_value * weight)
+  if (length(result) == 0) {
+    result <- 0
+  }
+  return(result)
+})
+
 
 
 ####################################
 #Collapsing data to single facility per row
 raw_collapsed <- raw %>%
   group_by(FacilityID) %>%
-  summarise(across(PoundsReleased_5yr_min, min, na.rm = TRUE), 
+  summarise(across(PoundsReleased_5yr_min, min, na.rm = TRUE),
+            across(PoundsReleased_5yr_max, max, na.rm = TRUE),
             across(PoundsReleased_5yr_sum, sum, na.rm = TRUE), 
-            across(Cancer_PoundsReleased_5yr_min, min, na.rm = TRUE), 
+            across(Cancer_PoundsReleased_5yr_min, min, na.rm = TRUE),
+            across(Cancer_PoundsReleased_5yr_max, max, na.rm = TRUE),
             across(Cancer_PoundsReleased_5yr_sum, sum, na.rm = TRUE), 
-            across(Dev_PoundsReleased_5yr_min, min, na.rm = TRUE), 
+            across(Dev_PoundsReleased_5yr_min, min, na.rm = TRUE),
+            across(Dev_PoundsReleased_5yr_max, max, na.rm = TRUE),
             across(Dev_PoundsReleased_5yr_sum, sum, na.rm = TRUE), 
-            across(Asthma_PoundsReleased_5yr_min, min, na.rm = TRUE), 
+            across(Asthma_PoundsReleased_5yr_min, min, na.rm = TRUE),
+            across(Asthma_PoundsReleased_5yr_max, max, na.rm = TRUE),
             across(Asthma_PoundsReleased_5yr_sum, sum, na.rm = TRUE),
-            across(Cancer_weighted_5yr_sum, sum, na.rm = TRUE),
+            #across(Cancer_weighted_5yr_sum, sum, na.rm = TRUE),
             #across(Dev_weighted_5yr_sum, sum, na.rm = TRUE),
             #across(Asthma_weighted_5yr_sum, sum, na.rm = TRUE),
             Chemical = toString(unique(Chemical)),
@@ -307,7 +350,7 @@ for (i in 1:nrow(raw_collapsed)) {
 #Cleanup & Export 
 colnames(raw_collapsed)
 
-final= raw_collapsed %>% select(FacilityID,FacilityName,Street,City,County,State,ZIPCode,Longitude,Latitude,Chemical,PoundsReleased_2017,PoundsReleased_2018,PoundsReleased_2019,PoundsReleased_2020,PoundsReleased_2021,PoundsReleased_5yr_min,PoundsReleased_5yr_sum,PoundsReleased_5yr_max,Pounds_5yr_perc,Cancer_PoundsReleased_5yr_min,Cancer_PoundsReleased_5yr_sum,Cancer_PoundsReleased_5yr_max,Cancer_Pounds_5yr_perc,Cancer_weighted_5yr_sum,Dev_PoundsReleased_5yr_min,Dev_PoundsReleased_5yr_sum,Dev_PoundsReleased_5yr_max,Dev_Pounds_5yr_perc,Dev_weighted_5yr_sum,Asthma_PoundsReleased_5yr_min,Asthma_PoundsReleased_5yr_sum,Asthma_PoundsReleased_5yr_max,Asthma_Pounds_5yr_perc,Asthma_weighted_5yr_sum,population_10km,WhtPercent_10km,NWPercent_10km,HispPercent_10km,BlkPercent_10km,AsianPercent_10km,AmerIndPercent_10km,Under5Percent_10km,ReprodFemPercent_10km,Over64Percent_10km,EduPercent_10km,housing_units_10km,VacPercent_10km,OwnOccPercent_10km,avg_median_income_10km,avg_median_house_value_10km,population_county,WhtPercent_county,NWPercent_county,HispPercent_county,BlkPercent_county,AsianPercent_county,AmerIndPercent_county,Under5Percent_county,ReprodFemPercent_county,Over64Percent_county,EduPercent_county,housing_units_county,VacPercent_county,OwnOccPercent_county,avg_median_income_county,avg_median_house_value_county,WhtPercent_change,NWPercent_change,HispPercent_change,BlkPercent_change,AsianPercent_change,AmerIndPercent_change,Under5Percent_change,ReprodFemPercent_change,Over64Percent_change,EduPercent_change,NAICS,'10km_Pounds_sum','10km_Pounds_min','10km_Pounds_max','10km_Cancer_Pounds_sum','10km_Cancer_Pounds_min','10km_Cancer_Pounds_max','10km_Dev_Pounds_sum','10km_Dev_Pounds_min','10km_Dev_Pounds_max','10km_Asthma_Pounds_sum','10km_Asthma_Pounds_min','10km_Asthma_Pounds_max','10km_facnum', Health_Risk_Count)
+final= raw_collapsed %>% select(FacilityID,FacilityName,Street,City,County,State,ZIPCode,Longitude,Latitude,Chemical,PoundsReleased_2018,PoundsReleased_2019,PoundsReleased_2020,PoundsReleased_2021,PoundsReleased_2022,PoundsReleased_5yr_min,PoundsReleased_5yr_sum,PoundsReleased_5yr_max,Pounds_5yr_perc,Cancer_PoundsReleased_5yr_min,Cancer_PoundsReleased_5yr_sum,Cancer_PoundsReleased_5yr_max,Cancer_Pounds_5yr_perc,Cancer_weighted_5yr_sum,Dev_PoundsReleased_5yr_min,Dev_PoundsReleased_5yr_sum,Dev_PoundsReleased_5yr_max,Dev_Pounds_5yr_perc,Dev_weighted_5yr_sum,Asthma_PoundsReleased_5yr_min,Asthma_PoundsReleased_5yr_sum,Asthma_PoundsReleased_5yr_max,Asthma_Pounds_5yr_perc,Asthma_weighted_5yr_sum,population_10km,WhtPercent_10km,NWPercent_10km,HispPercent_10km,BlkPercent_10km,AsianPercent_10km,AmerIndPercent_10km,Under5Percent_10km,ReprodFemPercent_10km,Over64Percent_10km,EduPercent_10km,housing_units_10km,VacPercent_10km,OwnOccPercent_10km,avg_median_income_10km,avg_median_house_value_10km,population_county,WhtPercent_county,NWPercent_county,HispPercent_county,BlkPercent_county,AsianPercent_county,AmerIndPercent_county,Under5Percent_county,ReprodFemPercent_county,Over64Percent_county,EduPercent_county,housing_units_county,VacPercent_county,OwnOccPercent_county,avg_median_income_county,avg_median_house_value_county,WhtPercent_change,NWPercent_change,HispPercent_change,BlkPercent_change,AsianPercent_change,AmerIndPercent_change,Under5Percent_change,ReprodFemPercent_change,Over64Percent_change,EduPercent_change,NAICS,'10km_Pounds_sum','10km_Pounds_min','10km_Pounds_max','10km_Cancer_Pounds_sum','10km_Cancer_Pounds_min','10km_Cancer_Pounds_max','10km_Dev_Pounds_sum','10km_Dev_Pounds_min','10km_Dev_Pounds_max','10km_Asthma_Pounds_sum','10km_Asthma_Pounds_min','10km_Asthma_Pounds_max','10km_facnum', Health_Risk_Count)
 
 #Export table
 write.xlsx(st_drop_geometry(final), file = "data/TSCA_merged_v2.xlsx", rowNames = FALSE)
