@@ -412,10 +412,10 @@ final= raw_collapsed_districts %>% select(FacilityID,FacilityName,Street,City,Co
 names(final)[names(final) == "NAMELSAD"] = "District"
 
 #Export table
-write.xlsx(st_drop_geometry(final), file = "data/TSCA_merged_dist.xlsx", rowNames = FALSE)
+write.xlsx(st_drop_geometry(final), file = "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_merged_dist.xlsx", rowNames = FALSE)
 
 #Export shapefile
-gdb_path <- "~/TSCA/Fenceline Map/TSCA-Map/TSCA_facilities_dist.gpkg"
+gdb_path <- "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_facilities_dist.gpkg"
 st_write(final, gdb_path, driver = "GPKG", layer_options = "OVERWRITE=yes",append=FALSE)
 
 
