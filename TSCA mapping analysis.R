@@ -345,18 +345,77 @@ for (i in 1:nrow(raw_collapsed)) {
     raw_collapsed$Health_Risk_Count[i] <- raw_collapsed$Health_Risk_Count[i] + 1
 }
 
+####################################
+#District & State Summary Info
+
+#download 119th congressional district shapefile (2024 = 119th) and add to raw data
+districts <- congressional_districts(cb = TRUE, year = 2024)
+raw_sf <- raw %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)  # WGS84
+districts <- st_transform(districts, crs = 4326)
+raw_districts <- st_join(raw_sf, districts, join = st_within)
+
+#State and district summary info 
+state_summary <- raw_districts %>%
+  mutate(total_release = PoundsReleased_2018 + PoundsReleased_2019 +
+           PoundsReleased_2020 + PoundsReleased_2021 +
+           PoundsReleased_2022) %>%
+  group_by(State) %>%
+  summarise(
+    state_num_facilities = n_distinct(FacilityID),
+    state_num_chemicals = n_distinct(Chemical),
+    state_sum_releases = sum(total_release, na.rm = TRUE)
+  ) %>%
+  mutate(
+    state_avg_release_per_facility = state_sum_releases / state_num_facilities
+  )
+
+
+district_summary <- raw_districts %>%
+  mutate(total_release = PoundsReleased_2018 + PoundsReleased_2019 +
+           PoundsReleased_2020 + PoundsReleased_2021 +
+           PoundsReleased_2022) %>%
+  group_by(GEOID) %>%
+  summarise(
+    district_num_facilities = n_distinct(FacilityID),
+    district_num_chemicals = n_distinct(Chemical),
+    district_sum_releases = sum(total_release, na.rm = TRUE)
+  ) %>%
+  mutate(
+    district_avg_release_per_facility = district_sum_releases / district_num_facilities
+  )
+
+#Add district info to raw_collapsed to add summary data back in
+raw_collapsed_sf <- raw_collapsed %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)  # WGS84
+districts <- st_transform(districts, crs = 4326)
+raw_collapsed_districts <- st_join(raw_collapsed_sf, districts, join = st_within)
+
+#Adding summary info to original data
+raw_collapsed_districts <- raw_collapsed_districts %>%
+  st_drop_geometry() %>%
+  left_join(state_summary, by = "State") %>%
+  bind_cols(st_geometry(raw_collapsed_districts)) %>%
+  st_as_sf()
+
+raw_collapsed_districts <-raw_collapsed_districts %>%
+  st_drop_geometry() %>%
+  left_join(district_summary, by = "GEOID") %>%
+  bind_cols(st_geometry(raw_collapsed_districts)) %>%
+  st_as_sf()
 
 ####################################
 #Cleanup & Export 
-colnames(raw_collapsed)
+colnames(raw_collapsed_districts)
 
-final= raw_collapsed %>% select(FacilityID,FacilityName,Street,City,County,State,ZIPCode,Longitude,Latitude,Chemical,PoundsReleased_2018,PoundsReleased_2019,PoundsReleased_2020,PoundsReleased_2021,PoundsReleased_2022,PoundsReleased_5yr_min,PoundsReleased_5yr_sum,PoundsReleased_5yr_max,Pounds_5yr_perc,Cancer_PoundsReleased_5yr_min,Cancer_PoundsReleased_5yr_sum,Cancer_PoundsReleased_5yr_max,Cancer_Pounds_5yr_perc,Cancer_weighted_5yr_sum,Dev_PoundsReleased_5yr_min,Dev_PoundsReleased_5yr_sum,Dev_PoundsReleased_5yr_max,Dev_Pounds_5yr_perc,Dev_weighted_5yr_sum,Asthma_PoundsReleased_5yr_min,Asthma_PoundsReleased_5yr_sum,Asthma_PoundsReleased_5yr_max,Asthma_Pounds_5yr_perc,Asthma_weighted_5yr_sum,population_10km,WhtPercent_10km,NWPercent_10km,HispPercent_10km,BlkPercent_10km,AsianPercent_10km,AmerIndPercent_10km,Under5Percent_10km,ReprodFemPercent_10km,Over64Percent_10km,EduPercent_10km,housing_units_10km,VacPercent_10km,OwnOccPercent_10km,avg_median_income_10km,avg_median_house_value_10km,population_county,WhtPercent_county,NWPercent_county,HispPercent_county,BlkPercent_county,AsianPercent_county,AmerIndPercent_county,Under5Percent_county,ReprodFemPercent_county,Over64Percent_county,EduPercent_county,housing_units_county,VacPercent_county,OwnOccPercent_county,avg_median_income_county,avg_median_house_value_county,WhtPercent_change,NWPercent_change,HispPercent_change,BlkPercent_change,AsianPercent_change,AmerIndPercent_change,Under5Percent_change,ReprodFemPercent_change,Over64Percent_change,EduPercent_change,NAICS,'10km_Pounds_sum','10km_Pounds_min','10km_Pounds_max','10km_Cancer_Pounds_sum','10km_Cancer_Pounds_min','10km_Cancer_Pounds_max','10km_Dev_Pounds_sum','10km_Dev_Pounds_min','10km_Dev_Pounds_max','10km_Asthma_Pounds_sum','10km_Asthma_Pounds_min','10km_Asthma_Pounds_max','10km_facnum', Health_Risk_Count)
+final= raw_collapsed_districts %>% select(FacilityID,FacilityName,Street,City,County,State,ZIPCode,GEOID,NAMELSAD,Longitude,Latitude,Chemical,PoundsReleased_2018,PoundsReleased_2019,PoundsReleased_2020,PoundsReleased_2021,PoundsReleased_2022,PoundsReleased_5yr_min,PoundsReleased_5yr_sum,PoundsReleased_5yr_max,Pounds_5yr_perc,Cancer_PoundsReleased_5yr_min,Cancer_PoundsReleased_5yr_sum,Cancer_PoundsReleased_5yr_max,Cancer_Pounds_5yr_perc,Cancer_weighted_5yr_sum,Dev_PoundsReleased_5yr_min,Dev_PoundsReleased_5yr_sum,Dev_PoundsReleased_5yr_max,Dev_Pounds_5yr_perc,Dev_weighted_5yr_sum,Asthma_PoundsReleased_5yr_min,Asthma_PoundsReleased_5yr_sum,Asthma_PoundsReleased_5yr_max,Asthma_Pounds_5yr_perc,Asthma_weighted_5yr_sum,state_num_facilities,state_num_chemicals,state_sum_releases,state_avg_release_per_facility,district_num_facilities,district_num_chemicals,district_sum_releases,district_avg_release_per_facility,population_10km,WhtPercent_10km,NWPercent_10km,HispPercent_10km,BlkPercent_10km,AsianPercent_10km,AmerIndPercent_10km,Under5Percent_10km,ReprodFemPercent_10km,Over64Percent_10km,EduPercent_10km,housing_units_10km,VacPercent_10km,OwnOccPercent_10km,avg_median_income_10km,avg_median_house_value_10km,population_county,WhtPercent_county,NWPercent_county,HispPercent_county,BlkPercent_county,AsianPercent_county,AmerIndPercent_county,Under5Percent_county,ReprodFemPercent_county,Over64Percent_county,EduPercent_county,housing_units_county,VacPercent_county,OwnOccPercent_county,avg_median_income_county,avg_median_house_value_county,WhtPercent_change,NWPercent_change,HispPercent_change,BlkPercent_change,AsianPercent_change,AmerIndPercent_change,Under5Percent_change,ReprodFemPercent_change,Over64Percent_change,EduPercent_change,NAICS,'10km_Pounds_sum','10km_Pounds_min','10km_Pounds_max','10km_Cancer_Pounds_sum','10km_Cancer_Pounds_min','10km_Cancer_Pounds_max','10km_Dev_Pounds_sum','10km_Dev_Pounds_min','10km_Dev_Pounds_max','10km_Asthma_Pounds_sum','10km_Asthma_Pounds_min','10km_Asthma_Pounds_max','10km_facnum', Health_Risk_Count)
+names(final)[names(final) == "NAMELSAD"] = "District"
 
 #Export table
-write.xlsx(st_drop_geometry(final), file = "data/TSCA_merged_v2.xlsx", rowNames = FALSE)
+write.xlsx(st_drop_geometry(final), file = "data/TSCA_merged_dist.xlsx", rowNames = FALSE)
 
 #Export shapefile
-gdb_path <- "~/TSCA/Fenceline Map/TSCA_facilitiesv2.gpkg"
+gdb_path <- "~/TSCA/Fenceline Map/TSCA-Map/TSCA_facilities_dist.gpkg"
 st_write(final, gdb_path, driver = "GPKG", layer_options = "OVERWRITE=yes",append=FALSE)
 
 
@@ -399,7 +458,7 @@ for (col in names(raw)[sapply(raw, is.numeric)]) {
     theme(legend.position = "bottom") +
     labs(title = paste("Map of", col)) +
     map_size
-    print(us_map)
+  print(us_map)
 }
 
 #filtering/QC
