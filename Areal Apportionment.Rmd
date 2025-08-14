@@ -29,6 +29,7 @@ library(tigris)
 library(geos)
 library(data.table)
 library(insight)
+library(stringr)
 ```
 
 ## Obtaining Census Data
