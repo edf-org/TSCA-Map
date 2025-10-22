@@ -227,6 +227,8 @@ raw_collapsed <- raw_districts %>%
     across(Cancer_weighted_5yr_sum, sum),
     across(Dev_weighted_5yr_sum, sum),
     across(Asthma_weighted_5yr_sum, sum),
+    Longitude = first(Longitude),
+    Latitude  = first(Latitude),
     Chemical = toString(unique(Chemical)),
     across(everything(), ~ if (is.numeric(.)) max(.) else first(.)),
     .groups = "drop"
