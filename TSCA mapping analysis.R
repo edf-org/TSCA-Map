@@ -3,7 +3,7 @@
 ### Chemical Exposure Action Map
 ###
 ### Final release, 8/8/2023
-### Updated by Paige Varner, 4/9/2024
+### Updated by Paige Varner, 5/7/2026
 ### by Jeremy Proville and Mary Collins, Environmental Defense Fund (edf.org)
 ### for more visit https://github.com/proville/TSCA-Map
 ##############################################################
@@ -52,10 +52,49 @@ weights <- weights %>%
 
 Cancer_weights <- weights[, c(1, 5)]
 Cancer_weights <- Cancer_weights[complete.cases(Cancer_weights), ]
-Dev_weights <- weights[, c(6, 11)]
+Dev_weights <- weights[, c(6, 10)]
 Dev_weights <- Dev_weights[complete.cases(Dev_weights), ]
-Asthma_weights <- weights[, c(12, 17)]
+Asthma_weights <- weights[, c(11, 16)]
 Asthma_weights <- Asthma_weights[complete.cases(Asthma_weights), ]
+
+####################################
+#Adding PFAS compounds at the same facility into one chemical identifier
+
+pfas_facility_summary <- raw %>%
+  filter(PFAS == TRUE) %>%                      # keep only PFAS chemicals
+  group_by(FacilityID) %>%
+  summarise(
+    # keep other columns (since they’re identical within facility)
+    across(
+      .cols = -c(PoundsReleased_2018, PoundsReleased_2019,
+                 PoundsReleased_2020, PoundsReleased_2021,
+                 PoundsReleased_2022, Chemical, PFAS),
+      .fns = first
+    ),
+    
+    # sum yearly release columns
+    PoundsReleased_2018 = sum(PoundsReleased_2018, na.rm = TRUE),
+    PoundsReleased_2019 = sum(PoundsReleased_2019, na.rm = TRUE),
+    PoundsReleased_2020 = sum(PoundsReleased_2020, na.rm = TRUE),
+    PoundsReleased_2021 = sum(PoundsReleased_2021, na.rm = TRUE),
+    PoundsReleased_2022 = sum(PoundsReleased_2022, na.rm = TRUE),
+    
+    # collapse chemical names into one column
+    PFAS_chemicals = paste(unique(Chemical), collapse = ", "),
+    
+    # Make this a proper “chemical row” and flag as PFAS facility
+    Chemical = "PFAS",
+    PFAS = TRUE,
+    
+    .groups = "drop"
+  )
+
+#Remove PFAS rows from raw
+raw_no_pfas <- raw %>%
+  filter(PFAS == FALSE)
+
+#Add back into raw
+raw <- bind_rows(raw_no_pfas, pfas_facility_summary)
 
 ####################################
 #Calcs for releases across years 
@@ -69,7 +108,7 @@ raw$PoundsReleased_5yr_sum <- apply(raw[, c("PoundsReleased_2018", "PoundsReleas
 ####################################
 #Health outcome calcs
 #CANCER chemicals only
-Cancer <- c("1,1,2-Trichloroethane", "1,2-Dibromoethane (Ethylene dibromide)", "1,2-Dichloroethane", "1,2-Dichloropropane", "1,3-Butadiene", "1,4-Dichlorobenzene (p-Dichlorobenzene)", "1,4-Dioxane", "1-Bromopropane", "Asbestos (friable)", "Carbon tetrachloride", "Di(2-ethylhexyl) phthalate", "Formaldehyde", "Dichloromethane (Methylene chloride)", "Tetrachloroethylene", "Trichloroethylene", "Tetrabromobisphenol A", "Acetaldehyde", "Acrylonitrile", "Aniline", "Vinyl chloride", "4,4'-Methylenebis(2-chloroaniline)")
+Cancer <- c("1,1,2-Trichloroethane", "1,2-Dibromoethane (Ethylene dibromide)", "1,2-Dichloroethane", "1,2-Dichloropropane", "1,3-Butadiene", "1,4-Dichlorobenzene (p-Dichlorobenzene)", "1,4-Dioxane", "1-Bromopropane", "Asbestos (friable)", "Carbon tetrachloride", "Di(2-ethylhexyl) phthalate", "Formaldehyde", "Dichloromethane (Methylene chloride)", "Tetrachloroethylene", "Trichloroethylene", "Tetrabromobisphenol A", "Acetaldehyde", "Acrylonitrile", "Aniline", "Vinyl chloride", "4,4'-Methylenebis(2-chloroaniline)", "PFAS")
 
 raw$Cancer_PoundsReleased_5yr_min <- apply(raw, 1, function(row) {
   ifelse(row["Chemical"] %in% Cancer, min(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
@@ -97,7 +136,7 @@ raw$Cancer_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
 
 
 #DEV chemicals only
-Dev <- c("1,2-Dichloroethane", "1,2-Dibromoethane (Ethylene dibromide)", "1,2-Dichloropropane", "1,3-Butadiene", "1,4-Dioxane", "1-Bromopropane", "Dibutyl phthalate", "Di(2-ethylhexyl) phthalate", "N-Methyl-2-pyrrolidone", "Tetrachloroethylene", "Trichloroethylene", "Hexabromocyclododecane", "Acrylonitrile", "Vinyl chloride")
+Dev <- c("1,2-Dichloroethane", "1,2-Dibromoethane (Ethylene dibromide)", "1,2-Dichloropropane", "1,3-Butadiene", "1,4-Dioxane", "1-Bromopropane", "Dibutyl phthalate", "Di(2-ethylhexyl) phthalate", "N-Methyl-2-pyrrolidone", "Tetrachloroethylene", "Trichloroethylene", "Hexabromocyclododecane", "Acrylonitrile", "Vinyl chloride", "PFAS")
 
 raw$Dev_PoundsReleased_5yr_min <- apply(raw, 1, function(row) {
   ifelse(row["Chemical"] %in% Dev, min(as.numeric(row[c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")]), na.rm = TRUE), 0)
@@ -210,29 +249,34 @@ raw_districts$Longitude <- coords[, "X"]
 raw_districts$Latitude <- coords[, "Y"]
 
 ####################################
-#Collapsing data to single facility per row 
+#Collapsing data to single facility per row (don't want to do this for the de-aggregated data, but renaming the raw_districts df to raw_collapsed so the code can stay consistent)
 
-raw_collapsed <- raw_districts %>%
-  mutate(across(where(is.numeric), ~ replace_na(., 0))) %>%
-  group_by(FacilityID) %>%
-  summarise(
-    across(PoundsReleased_5yr_min, min), 
-    across(PoundsReleased_5yr_sum, sum), 
-    across(Cancer_PoundsReleased_5yr_min, min), 
-    across(Cancer_PoundsReleased_5yr_sum, sum), 
-    across(Dev_PoundsReleased_5yr_min, min), 
-    across(Dev_PoundsReleased_5yr_sum, sum), 
-    across(Asthma_PoundsReleased_5yr_min, min), 
-    across(Asthma_PoundsReleased_5yr_sum, sum),
-    across(Cancer_weighted_5yr_sum, sum),
-    across(Dev_weighted_5yr_sum, sum),
-    across(Asthma_weighted_5yr_sum, sum),
-    Longitude = first(Longitude),
-    Latitude  = first(Latitude),
-    Chemical = toString(unique(Chemical)),
-    across(everything(), ~ if (is.numeric(.)) max(.) else first(.)),
-    .groups = "drop"
-  )
+raw_collapsed = raw_districts
+
+#raw_collapsed <- raw_districts %>%
+ # mutate(across(where(is.numeric), ~ replace_na(., 0))) %>%
+  #group_by(FacilityID) %>%
+  #summarise(
+   # across(PoundsReleased_5yr_min, min), 
+    #across(PoundsReleased_5yr_sum, sum), 
+    #across(Cancer_PoundsReleased_5yr_min, min), 
+    #across(Cancer_PoundsReleased_5yr_sum, sum), 
+    #across(Dev_PoundsReleased_5yr_min, min), 
+    #across(Dev_PoundsReleased_5yr_sum, sum), 
+    #across(Asthma_PoundsReleased_5yr_min, min), 
+    #across(Asthma_PoundsReleased_5yr_sum, sum),
+    #across(Cancer_weighted_5yr_sum, sum),
+    #across(Dev_weighted_5yr_sum, sum),
+    #across(Asthma_weighted_5yr_sum, sum),
+    #Longitude = first(Longitude),
+    #Latitude  = first(Latitude),
+    #Chemical = toString(unique(Chemical)),
+    #GEOID = first(GEOID),
+    #District = first(NAMELSAD),  # or whatever your district column name is
+    #across(everything(), ~ if (is.numeric(.)) max(.) else first(.)),
+    #.groups = "drop"
+  #)
+
 
 #Renaming some mismatched demographic columns
 raw_collapsed <- raw_collapsed %>%
@@ -377,17 +421,19 @@ for (i in 1:nrow(raw_collapsed)) {
 #Cleanup & Export 
 colnames(raw_collapsed)
 
-final= raw_collapsed %>% select(FacilityID,FacilityName,Street,City,County,State,ZIPCode,Longitude,Latitude,Chemical,PoundsReleased_2018,PoundsReleased_2019,PoundsReleased_2020,PoundsReleased_2021,PoundsReleased_2022,PoundsReleased_5yr_min,PoundsReleased_5yr_sum,PoundsReleased_5yr_max,Pounds_5yr_perc,Cancer_PoundsReleased_5yr_min,Cancer_PoundsReleased_5yr_sum,Cancer_PoundsReleased_5yr_max,Cancer_Pounds_5yr_perc,Cancer_weighted_5yr_sum,Dev_PoundsReleased_5yr_min,Dev_PoundsReleased_5yr_sum,Dev_PoundsReleased_5yr_max,Dev_Pounds_5yr_perc,Dev_weighted_5yr_sum,Asthma_PoundsReleased_5yr_min,Asthma_PoundsReleased_5yr_sum,Asthma_PoundsReleased_5yr_max,Asthma_Pounds_5yr_perc,Asthma_weighted_5yr_sum,state_num_facilities,state_num_chemicals,state_sum_releases,district_num_facilities,district_num_chemicals,district_sum_releases,population_10km,WhtPercent_10km,NWPercent_10km,HispPercent_10km,BlkPercent_10km,AsianPercent_10km,AmerIndPercent_10km,Under5Percent_10km,ReprodFemPercent_10km,Over64Percent_10km,EduPercent_10km,housing_units_10km,VacPercent_10km,OwnOccPercent_10km,avg_median_income_10km,avg_median_house_value_10km,population_county,WhtPercent_county,NWPercent_county,HispPercent_county,BlkPercent_county,AsianPercent_county,AmerIndPercent_county,Under5Percent_county,ReprodFemPercent_county,Over64Percent_county,EduPercent_county,housing_units_county,VacPercent_county,OwnOccPercent_county,avg_median_income_county,avg_median_house_value_county,WhtPercent_change,NWPercent_change,HispPercent_change,BlkPercent_change,AsianPercent_change,AmerIndPercent_change,Under5Percent_change,ReprodFemPercent_change,Over64Percent_change,EduPercent_change,NAICS,'10km_Pounds_sum','10km_Pounds_min','10km_Pounds_max','10km_Cancer_Pounds_sum','10km_Cancer_Pounds_min','10km_Cancer_Pounds_max','10km_Dev_Pounds_sum','10km_Dev_Pounds_min','10km_Dev_Pounds_max','10km_Asthma_Pounds_sum','10km_Asthma_Pounds_min','10km_Asthma_Pounds_max','10km_facnum', Health_Risk_Count)
+names(raw_collapsed)[names(raw_collapsed) == "NAMELSAD"] <- "District"
+
+final= raw_collapsed %>% select(FacilityID,FacilityName,Street,City,County,State,ZIPCode,Longitude,Latitude,Chemical,PFAS,PFAS_chemicals,PoundsReleased_2018,PoundsReleased_2019,PoundsReleased_2020,PoundsReleased_2021,PoundsReleased_2022,PoundsReleased_5yr_min,PoundsReleased_5yr_sum,PoundsReleased_5yr_max,Pounds_5yr_perc,Cancer_PoundsReleased_5yr_min,Cancer_PoundsReleased_5yr_sum,Cancer_PoundsReleased_5yr_max,Cancer_Pounds_5yr_perc,Cancer_weighted_5yr_sum,Dev_PoundsReleased_5yr_min,Dev_PoundsReleased_5yr_sum,Dev_PoundsReleased_5yr_max,Dev_Pounds_5yr_perc,Dev_weighted_5yr_sum,Asthma_PoundsReleased_5yr_min,Asthma_PoundsReleased_5yr_sum,Asthma_PoundsReleased_5yr_max,Asthma_Pounds_5yr_perc,Asthma_weighted_5yr_sum,state_num_facilities,state_num_chemicals,state_sum_releases,District,GEOID,district_num_facilities,district_num_chemicals,district_sum_releases,population_10km,WhtPercent_10km,NWPercent_10km,HispPercent_10km,BlkPercent_10km,AsianPercent_10km,AmerIndPercent_10km,Under5Percent_10km,ReprodFemPercent_10km,Over64Percent_10km,EduPercent_10km,housing_units_10km,VacPercent_10km,OwnOccPercent_10km,avg_median_income_10km,avg_median_house_value_10km,population_county,WhtPercent_county,NWPercent_county,HispPercent_county,BlkPercent_county,AsianPercent_county,AmerIndPercent_county,Under5Percent_county,ReprodFemPercent_county,Over64Percent_county,EduPercent_county,housing_units_county,VacPercent_county,OwnOccPercent_county,avg_median_income_county,avg_median_house_value_county,WhtPercent_change,NWPercent_change,HispPercent_change,BlkPercent_change,AsianPercent_change,AmerIndPercent_change,Under5Percent_change,ReprodFemPercent_change,Over64Percent_change,EduPercent_change,NAICS,'10km_Pounds_sum','10km_Pounds_min','10km_Pounds_max','10km_Cancer_Pounds_sum','10km_Cancer_Pounds_min','10km_Cancer_Pounds_max','10km_Dev_Pounds_sum','10km_Dev_Pounds_min','10km_Dev_Pounds_max','10km_Asthma_Pounds_sum','10km_Asthma_Pounds_min','10km_Asthma_Pounds_max','10km_facnum', Health_Risk_Count)
 
 #fix zip code issue
 final$ZIPCode <- as.character(final$ZIPCode)
 final$ZIPCode <- str_pad(final$ZIPCode, width = 5, side = "left", pad = "0")
 
 #Export table
-write.xlsx(st_drop_geometry(final), file = "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_merged_dist.xlsx", rowNames = FALSE)
+write.xlsx(st_drop_geometry(final), file = "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_PFASupdate_May2026.xlsx", rowNames = FALSE)
 
 #Export shapefile
-gdb_path <- "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_facilities_dist.gpkg"
+gdb_path <- "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_PFASupdate_May2026.gpkg"
 st_write(final, gdb_path, driver = "GPKG", layer_options = "OVERWRITE=yes",append=FALSE)
 
 

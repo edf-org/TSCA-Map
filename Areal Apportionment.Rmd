@@ -187,10 +187,11 @@ GetRSEIData2 <- function(rseiversion = "v2311", savetodisk = FALSE, directory = 
 } # close function
 ```
 
+
 ### run new function
 ```{r}
 myworkingdirectory <- getwd()
-DataList <- GetRSEIData2(rseiversion = "v2312", savetodisk = TRUE, directory = myworkingdirectory, seconds=500)
+DataList <- GetRSEIData2(rseiversion = "v2312", savetodisk = TRUE, directory = myworkingdirectory, seconds=3600)
 ```
 
 
@@ -210,9 +211,27 @@ The RSEISearch function is very flexible, with lots of optional arguments to all
 We are searching and filtering for facilities that are releasing the 28 high priority chemicals undergoing TSCA assessment and management (the ones that are reported in TRI). We are searching based on the chemical numbers rather than names, which can be found here: https://www.epa.gov/rsei/rsei-data-dictionary-chemical-data.
 
 ```{r}
+#28 high priority chems
 chems = c("273", "630", "41", "115", "631", "225", "398", "531", "567", "215", "193", "80", "222", "182", "315", "229", "566", "613", "195", "467", "214", "3", "12", "32", "586", "383", "298", "223")
 
-facilities_TSCA <- RSEISearch(DownloadRSEI= FALSE, RSEIpath = paste(getwd(),"RSEI_Public_Release_Data_V2312_RY2022",sep="/"), RSEIversion="v2312", StartYr=2018, EndYr=2022, rsei_Chem_Numbers  = chems, returnLocation = T, projectTo = 3857, wider=TRUE)
+#get PFAS chems
+Chemicals <- read.csv(
+  file.path(getwd(), "RSEI_Public_Release_Data_V2312_RY2022", "chemical_data_rsei_v2312.csv"),
+  stringsAsFactors = FALSE
+)
+
+pfas_chems <- Chemicals$ChemicalNumber[Chemicals$PFASFlag == TRUE]
+
+#combine into full chemical list
+chems_all <- unique(c(chems, pfas_chems))
+
+#get facilities that release these chemicals
+facilities_TSCA <- RSEISearch(DownloadRSEI= FALSE, RSEIpath = paste(getwd(),"RSEI_Public_Release_Data_V2312_RY2022",sep="/"), RSEIversion="v2312", StartYr=2018, EndYr=2022, rsei_Chem_Numbers  = chems_all, returnLocation = T, projectTo = 3857, wider=TRUE)
+
+
+length(chems)        # original 28
+length(pfas_chems)   # PFAS count
+length(chems_all)    # combined
 
 ```
 
@@ -369,7 +388,10 @@ final_col = c("Chemical", "CAS", "ChemicalNumber", "FacilityName", "FacilityID",
                       "Over64Percent_county", "Under5Percent_county", "ReprodFemPercent_county", 
                       "housing_unitsE_county", "housing_unitsE_10km")
 
-final_TSCA_df = facilities_TSCA_appor_sum %>% select(all_of(final_col))
+#get final df including a PFAS identifier
+final_TSCA_df = facilities_TSCA_appor_sum %>%
+  select(all_of(final_col)) %>%
+  mutate(PFAS = ChemicalNumber %in% pfas_chems)
 
 ```
 
