@@ -98,13 +98,19 @@ raw <- bind_rows(raw_no_pfas, pfas_facility_summary)
 
 ####################################
 #Calcs for releases across years 
-raw$PoundsReleased_5yr_min <- apply(raw[, c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")], MARGIN = 1, FUN = min, na.rm = TRUE)
+release_mat <- raw[, c(
+  "PoundsReleased_2018",
+  "PoundsReleased_2019",
+  "PoundsReleased_2020",
+  "PoundsReleased_2021",
+  "PoundsReleased_2022"
+)]
 
-raw$PoundsReleased_5yr_max <- apply(raw[, c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")], MARGIN = 1, FUN = max, na.rm = TRUE)
+release_mat <- as.data.frame(lapply(release_mat, as.numeric))
 
-#Sum field needs to be the max value across all 5 years, but then summed later across chemicals (hence the different field name)
-raw$PoundsReleased_5yr_sum <- apply(raw[, c("PoundsReleased_2018", "PoundsReleased_2019", "PoundsReleased_2020", "PoundsReleased_2021", "PoundsReleased_2022")], MARGIN = 1, FUN = max, na.rm = TRUE)
-
+raw$PoundsReleased_5yr_min <- apply(release_mat, 1, min, na.rm = TRUE)
+raw$PoundsReleased_5yr_max <- apply(release_mat, 1, max, na.rm = TRUE)
+raw$PoundsReleased_5yr_sum <- apply(release_mat, 1, max, na.rm = TRUE)
 ####################################
 #Health outcome calcs
 #CANCER chemicals only
@@ -191,59 +197,129 @@ raw$Asthma_weighted_5yr_sum <- apply(raw, MARGIN = 1, FUN = function(x) {
 })
 
 ####################################
+# FACILITY-LEVEL AGGREGATION TABLE (NEW STEP)
+
+names(raw)
+
+facility_level <- raw %>%
+  group_by(FacilityID) %>%
+  summarise(
+    
+    # keep one row per facility
+    across(c(FacilityName, Street, City, County, State, ZIPCode,
+             Longitude, Latitude, ModeledNAICS),
+           first),
+    
+    # RELEASE METRICS (aggregate across chemicals)
+    PoundsReleased_5yr_min = min(PoundsReleased_5yr_min, na.rm = TRUE),
+    PoundsReleased_5yr_sum = sum(PoundsReleased_5yr_sum, na.rm = TRUE),
+    PoundsReleased_5yr_max = max(PoundsReleased_5yr_max, na.rm = TRUE),
+    
+    Cancer_PoundsReleased_5yr_min = min(Cancer_PoundsReleased_5yr_min, na.rm = TRUE),
+    Cancer_PoundsReleased_5yr_sum = sum(Cancer_PoundsReleased_5yr_sum, na.rm = TRUE),
+    Cancer_PoundsReleased_5yr_max = max(Cancer_PoundsReleased_5yr_max, na.rm = TRUE),
+    
+    Dev_PoundsReleased_5yr_min = min(Dev_PoundsReleased_5yr_min, na.rm = TRUE),
+    Dev_PoundsReleased_5yr_sum = sum(Dev_PoundsReleased_5yr_sum, na.rm = TRUE),
+    Dev_PoundsReleased_5yr_max = max(Dev_PoundsReleased_5yr_max, na.rm = TRUE),
+    
+    Asthma_PoundsReleased_5yr_min = min(Asthma_PoundsReleased_5yr_min, na.rm = TRUE),
+    Asthma_PoundsReleased_5yr_sum = sum(Asthma_PoundsReleased_5yr_sum, na.rm = TRUE),
+    Asthma_PoundsReleased_5yr_max = max(Asthma_PoundsReleased_5yr_max, na.rm = TRUE),
+    
+    # WEIGHTED METRICS (sum across chemicals)
+    Cancer_weighted_5yr_sum = sum(Cancer_weighted_5yr_sum, na.rm = TRUE),
+    Dev_weighted_5yr_sum    = sum(Dev_weighted_5yr_sum, na.rm = TRUE),
+    Asthma_weighted_5yr_sum = sum(Asthma_weighted_5yr_sum, na.rm = TRUE),
+    
+    .groups = "drop"
+  )
+
+#join facility metrics back to row-level data
+raw <- raw %>%
+  left_join(
+    facility_level %>%
+      select(FacilityID,
+             PoundsReleased_5yr_min, PoundsReleased_5yr_sum, PoundsReleased_5yr_max,
+             Cancer_PoundsReleased_5yr_min, Cancer_PoundsReleased_5yr_sum, Cancer_PoundsReleased_5yr_max,
+             Dev_PoundsReleased_5yr_min, Dev_PoundsReleased_5yr_sum, Dev_PoundsReleased_5yr_max,
+             Asthma_PoundsReleased_5yr_min, Asthma_PoundsReleased_5yr_sum, Asthma_PoundsReleased_5yr_max,
+             Cancer_weighted_5yr_sum, Dev_weighted_5yr_sum, Asthma_weighted_5yr_sum),
+    by = "FacilityID",
+    suffix = c(".old", "")
+  ) %>%
+  
+  # remove old chemical-level versions
+  select(-ends_with(".old"))
+
+####################################
 #District & State Summary Info 
 
 library(sf)
 library(dplyr)
 library(tigris)
 
-# Download 119th congressional district shapefile (2024 = 119th) and join to raw
+# Load districts
 districts <- tigris::congressional_districts(cb = TRUE, year = 2024)
-
-raw_sf <- raw %>%
-  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)  # WGS84
-
 districts <- st_transform(districts, crs = 4326)
+
+# Convert raw to sf
+raw_sf <- raw %>%
+  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326, remove = FALSE)
+
+# Spatial join
 raw_districts <- st_join(raw_sf, districts, join = st_within)
 
+# FIX 1: REMOVE .x / .y DUPLICATES IMMEDIATELY
+raw_districts <- raw_districts %>%
+  mutate(across(ends_with(".x"), ~ .)) %>%
+  rename_with(~ gsub("\\.x$", "", .x)) %>%
+  select(-ends_with(".y"))
+
+# Optional sanity check
+names(raw_districts)
 
 # State-level summary
 state_summary <- raw_districts %>%
+  st_drop_geometry() %>%
   group_by(State) %>%
   summarise(
     state_num_facilities = n_distinct(FacilityID),
     state_num_chemicals = n_distinct(Chemical),
-    state_sum_releases = sum(PoundsReleased_5yr_sum, na.rm = TRUE)
+    state_sum_releases =
+      sum(
+        distinct(
+          select(., FacilityID, PoundsReleased_5yr_sum)
+        )$PoundsReleased_5yr_sum,
+        na.rm = TRUE
+      ),
+    
+    .groups = "drop"
   )
 
 # District-level summary
 district_summary <- raw_districts %>%
+  st_drop_geometry() %>%
   group_by(GEOID) %>%
   summarise(
     district_num_facilities = n_distinct(FacilityID),
     district_num_chemicals = n_distinct(Chemical),
-    district_sum_releases = sum(PoundsReleased_5yr_sum, na.rm = TRUE)
+    district_sum_releases =
+      sum(
+        distinct(
+          select(., FacilityID, PoundsReleased_5yr_sum)
+        )$PoundsReleased_5yr_sum,
+        na.rm = TRUE
+      ),
+    .groups = "drop"
   )
 
-# Extract coordinates BEFORE dropping geometry the first time
-coords <- st_coordinates(raw_districts)
-raw_districts$Longitude <- coords[, "X"]
-raw_districts$Latitude <- coords[, "Y"]
-
-# Add state summary
+# Re-attach summaries WITHOUT geometry corruption
 raw_districts <- raw_districts %>%
-  st_drop_geometry() %>%
-  left_join(state_summary, by = "State")
-
-# Add district summary
-raw_districts <- raw_districts %>%
+  left_join(state_summary, by = "State") %>%
   left_join(district_summary, by = "GEOID")
 
-# Re-create sf object, but KEEP Longitude and Latitude as columns
-raw_districts <- raw_districts %>%
-  st_as_sf(coords = c("Longitude", "Latitude"), crs = 4326)
-
-# Add Longitude and Latitude back as regular columns
+# Ensure coordinates are clean
 coords <- st_coordinates(raw_districts)
 raw_districts$Longitude <- coords[, "X"]
 raw_districts$Latitude <- coords[, "Y"]
@@ -251,31 +327,37 @@ raw_districts$Latitude <- coords[, "Y"]
 ####################################
 #Collapsing data to single facility per row (don't want to do this for the de-aggregated data, but renaming the raw_districts df to raw_collapsed so the code can stay consistent)
 
-raw_collapsed = raw_districts
+raw_collapsed = raw_districts %>%
+  left_join(facility_level, by = "FacilityID")
+
+# Remove duplicate .x/.y columns after join
+raw_collapsed <- raw_collapsed %>%
+  select(-ends_with(".x")) %>%   # remove old pre-aggregation vars
+  rename_with(~ gsub("\\.y$", "", .x), ends_with(".y"))
 
 #raw_collapsed <- raw_districts %>%
- # mutate(across(where(is.numeric), ~ replace_na(., 0))) %>%
-  #group_by(FacilityID) %>%
-  #summarise(
-   # across(PoundsReleased_5yr_min, min), 
-    #across(PoundsReleased_5yr_sum, sum), 
-    #across(Cancer_PoundsReleased_5yr_min, min), 
-    #across(Cancer_PoundsReleased_5yr_sum, sum), 
-    #across(Dev_PoundsReleased_5yr_min, min), 
-    #across(Dev_PoundsReleased_5yr_sum, sum), 
-    #across(Asthma_PoundsReleased_5yr_min, min), 
-    #across(Asthma_PoundsReleased_5yr_sum, sum),
-    #across(Cancer_weighted_5yr_sum, sum),
-    #across(Dev_weighted_5yr_sum, sum),
-    #across(Asthma_weighted_5yr_sum, sum),
-    #Longitude = first(Longitude),
-    #Latitude  = first(Latitude),
-    #Chemical = toString(unique(Chemical)),
-    #GEOID = first(GEOID),
-    #District = first(NAMELSAD),  # or whatever your district column name is
-    #across(everything(), ~ if (is.numeric(.)) max(.) else first(.)),
-    #.groups = "drop"
-  #)
+# mutate(across(where(is.numeric), ~ replace_na(., 0))) %>%
+#group_by(FacilityID) %>%
+#summarise(
+# across(PoundsReleased_5yr_min, min), 
+#across(PoundsReleased_5yr_sum, sum), 
+#across(Cancer_PoundsReleased_5yr_min, min), 
+#across(Cancer_PoundsReleased_5yr_sum, sum), 
+#across(Dev_PoundsReleased_5yr_min, min), 
+#across(Dev_PoundsReleased_5yr_sum, sum), 
+#across(Asthma_PoundsReleased_5yr_min, min), 
+#across(Asthma_PoundsReleased_5yr_sum, sum),
+#across(Cancer_weighted_5yr_sum, sum),
+#across(Dev_weighted_5yr_sum, sum),
+#across(Asthma_weighted_5yr_sum, sum),
+#Longitude = first(Longitude),
+#Latitude  = first(Latitude),
+#Chemical = toString(unique(Chemical)),
+#GEOID = first(GEOID),
+#District = first(NAMELSAD),  # or whatever your district column name is
+#across(everything(), ~ if (is.numeric(.)) max(.) else first(.)),
+#.groups = "drop"
+#)
 
 
 #Renaming some mismatched demographic columns
@@ -288,155 +370,375 @@ raw_collapsed <- raw_collapsed %>%
 # Convert 'raw_collapsed' data frame to an sf object
 raw_collapsed_sf <- st_as_sf(raw_collapsed, coords = c("Longitude", "Latitude"), crs = st_crs(4326),remove=FALSE)
 
-raw_collapsed_sf$`10km_Pounds_sum`=0
-raw_collapsed_sf$`10km_Pounds_min`=0
-raw_collapsed_sf$`10km_Pounds_max`=0
-raw_collapsed_sf$`10km_Cancer_Pounds_sum`=0
-raw_collapsed_sf$`10km_Cancer_Pounds_min`=0
-raw_collapsed_sf$`10km_Cancer_Pounds_max`=0
-raw_collapsed_sf$`10km_Dev_Pounds_sum`=0
-raw_collapsed_sf$`10km_Dev_Pounds_min`=0
-raw_collapsed_sf$`10km_Dev_Pounds_max`=0
-raw_collapsed_sf$`10km_Asthma_Pounds_sum`=0
-raw_collapsed_sf$`10km_Asthma_Pounds_min`=0
-raw_collapsed_sf$`10km_Asthma_Pounds_max`=0
+# IMPORTANT: collapse spatial layer to unique facilities ONLY for buffer calculations
+buffer_sf <- raw_collapsed_sf %>%
+  group_by(FacilityID) %>%
+  slice(1) %>%
+  ungroup()
 
-raw_collapsed_sf <- raw_collapsed_sf %>%
+buffer_sf$`10km_Pounds_sum`=0
+buffer_sf$`10km_Pounds_min`=0
+buffer_sf$`10km_Pounds_max`=0
+buffer_sf$`10km_Cancer_Pounds_sum`=0
+buffer_sf$`10km_Cancer_Pounds_min`=0
+buffer_sf$`10km_Cancer_Pounds_max`=0
+buffer_sf$`10km_Dev_Pounds_sum`=0
+buffer_sf$`10km_Dev_Pounds_min`=0
+buffer_sf$`10km_Dev_Pounds_max`=0
+buffer_sf$`10km_Asthma_Pounds_sum`=0
+buffer_sf$`10km_Asthma_Pounds_min`=0
+buffer_sf$`10km_Asthma_Pounds_max`=0
+
+buffer_sf <- buffer_sf %>%
   mutate(`10km_facnum` = lengths(st_within(st_geometry(.), st_buffer(st_geometry(.), dist = 10000))))
 
 #Init progress bar for buffer spatial calcs
-n_rows <- nrow(raw_collapsed_sf)
+n_rows <- nrow(buffer_sf)
 progress_bar <- txtProgressBar(min = 0, max = n_rows, style = 3)
 
 points_within_radius=0
 
 #All facility buffer calcs
 for (i in seq_len(n_rows)) {
-  geom <- st_geometry(raw_collapsed_sf)[i]
+  geom <- st_geometry(buffer_sf)[i]
   buffer <- st_buffer(geom, dist = 10000)
-  distances <- st_distance(raw_collapsed_sf, buffer)
-  points_within_radius <- raw_collapsed_sf[as.numeric(distances) <= 10000, ]
+  distances <- st_distance(buffer_sf, buffer)
+  points_within_radius <- buffer_sf[as.numeric(distances) <= 10000, ]
   sum_sum <- sum(points_within_radius$PoundsReleased_5yr_sum, na.rm = TRUE)
   sum_min <- sum(points_within_radius$PoundsReleased_5yr_min, na.rm = TRUE)
   sum_max <- sum(points_within_radius$PoundsReleased_5yr_max, na.rm = TRUE)
-  raw_collapsed_sf$`10km_Pounds_sum`[i] <- sum_sum
-  raw_collapsed_sf$`10km_Pounds_min`[i] <- sum_min
-  raw_collapsed_sf$`10km_Pounds_max`[i] <- sum_max
+  buffer_sf$`10km_Pounds_sum`[i] <- sum_sum
+  buffer_sf$`10km_Pounds_min`[i] <- sum_min
+  buffer_sf$`10km_Pounds_max`[i] <- sum_max
   setTxtProgressBar(progress_bar, i)
 }
 
 #Cancer risk buffer calcs
 for (i in seq_len(n_rows)) {
-  geom <- st_geometry(raw_collapsed_sf)[i]
+  geom <- st_geometry(buffer_sf)[i]
   buffer <- st_buffer(geom, dist = 10000)
-  distances <- st_distance(raw_collapsed_sf, buffer)
-  points_within_radius <- raw_collapsed_sf[as.numeric(distances) <= 10000, ]
+  distances <- st_distance(buffer_sf, buffer)
+  points_within_radius <- buffer_sf[as.numeric(distances) <= 10000, ]
   sum_sum <- sum(points_within_radius$Cancer_PoundsReleased_5yr_sum, na.rm = TRUE)
   sum_min <- sum(points_within_radius$Cancer_PoundsReleased_5yr_min, na.rm = TRUE)
   sum_max <- sum(points_within_radius$Cancer_PoundsReleased_5yr_max, na.rm = TRUE)
-  raw_collapsed_sf$`10km_Cancer_Pounds_sum`[i] <- sum_sum
-  raw_collapsed_sf$`10km_Cancer_Pounds_min`[i] <- sum_min
-  raw_collapsed_sf$`10km_Cancer_Pounds_max`[i] <- sum_max
+  buffer_sf$`10km_Cancer_Pounds_sum`[i] <- sum_sum
+  buffer_sf$`10km_Cancer_Pounds_min`[i] <- sum_min
+  buffer_sf$`10km_Cancer_Pounds_max`[i] <- sum_max
   setTxtProgressBar(progress_bar, i)
 }
 
 #Dev risk buffer calcs
 for (i in seq_len(n_rows)) {
-  geom <- st_geometry(raw_collapsed_sf)[i]
+  geom <- st_geometry(buffer_sf)[i]
   buffer <- st_buffer(geom, dist = 10000)
-  distances <- st_distance(raw_collapsed_sf, buffer)
-  points_within_radius <- raw_collapsed_sf[as.numeric(distances) <= 10000, ]
+  distances <- st_distance(buffer_sf, buffer)
+  points_within_radius <- buffer_sf[as.numeric(distances) <= 10000, ]
   sum_sum <- sum(points_within_radius$Dev_PoundsReleased_5yr_sum, na.rm = TRUE)
   sum_min <- sum(points_within_radius$Dev_PoundsReleased_5yr_min, na.rm = TRUE)
   sum_max <- sum(points_within_radius$Dev_PoundsReleased_5yr_max, na.rm = TRUE)
-  raw_collapsed_sf$`10km_Dev_Pounds_sum`[i] <- sum_sum
-  raw_collapsed_sf$`10km_Dev_Pounds_min`[i] <- sum_min
-  raw_collapsed_sf$`10km_Dev_Pounds_max`[i] <- sum_max
+  buffer_sf$`10km_Dev_Pounds_sum`[i] <- sum_sum
+  buffer_sf$`10km_Dev_Pounds_min`[i] <- sum_min
+  buffer_sf$`10km_Dev_Pounds_max`[i] <- sum_max
   setTxtProgressBar(progress_bar, i)
 }
 
 #Asthma risk buffer calcs
 for (i in seq_len(n_rows)) {
-  geom <- st_geometry(raw_collapsed_sf)[i]
+  geom <- st_geometry(buffer_sf)[i]
   buffer <- st_buffer(geom, dist = 10000)
-  distances <- st_distance(raw_collapsed_sf, buffer)
-  points_within_radius <- raw_collapsed_sf[as.numeric(distances) <= 10000, ]
+  distances <- st_distance(buffer_sf, buffer)
+  points_within_radius <- buffer_sf[as.numeric(distances) <= 10000, ]
   sum_sum <- sum(points_within_radius$Asthma_PoundsReleased_5yr_sum, na.rm = TRUE)
   sum_min <- sum(points_within_radius$Asthma_PoundsReleased_5yr_min, na.rm = TRUE)
   sum_max <- sum(points_within_radius$Asthma_PoundsReleased_5yr_max, na.rm = TRUE)
-  raw_collapsed_sf$`10km_Asthma_Pounds_sum`[i] <- sum_sum
-  raw_collapsed_sf$`10km_Asthma_Pounds_min`[i] <- sum_min
-  raw_collapsed_sf$`10km_Asthma_Pounds_max`[i] <- sum_max
+  buffer_sf$`10km_Asthma_Pounds_sum`[i] <- sum_sum
+  buffer_sf$`10km_Asthma_Pounds_min`[i] <- sum_min
+  buffer_sf$`10km_Asthma_Pounds_max`[i] <- sum_max
   setTxtProgressBar(progress_bar, i)
 }
 
 close(progress_bar)
 
-raw_collapsed_sf$'10km_facnum'=raw_collapsed_sf$'10km_facnum'-1
-raw_collapsed=raw_collapsed_sf
+buffer_sf$'10km_facnum' = buffer_sf$'10km_facnum' - 1
 
-
-#Adding NAICS descriptions 
-raw_collapsed <- raw_collapsed %>%
-  left_join(naics, by = c("ModeledNAICS" = "NAICS"))
-raw_collapsed <- raw_collapsed %>%
-  rename(NAICS = '2022.NAICS.US.Title')
 
 ####################################
-#Demographic calcs 
-demovars <- c("WhtPercent", "NWPercent","HispPercent", "BlkPercent", "AsianPercent", "AmerIndPercent", "Under5Percent","ReprodFemPercent", "Over64Percent","EduPercent","housing_units","VacPercent","OwnOccPercent","avg_median_income","avg_median_house_value")
+# Add NAICS descriptions
 
-# Loop through demos and create new columns 
+buffer_sf <- buffer_sf %>%
+  left_join(naics, by = c("ModeledNAICS" = "NAICS")) %>%
+  rename(NAICS = `2022.NAICS.US.Title`)
+
+####################################
+# Demographic calculations
+
+demovars <- c(
+  "WhtPercent", "NWPercent","HispPercent", "BlkPercent",
+  "AsianPercent", "AmerIndPercent", "Under5Percent",
+  "ReprodFemPercent", "Over64Percent","EduPercent",
+  "housing_units","VacPercent","OwnOccPercent",
+  "avg_median_income","avg_median_house_value"
+)
+
 for (v in demovars) {
+  
   new_col <- paste0(v, "_change")
-  raw_collapsed[[new_col]] <- (raw_collapsed[[paste0(v, "_10km")]] - raw_collapsed[[paste0(v, "_county")]]) / raw_collapsed[[paste0(v, "_county")]] * 100
+  
+  buffer_sf[[new_col]] <-
+    (
+      buffer_sf[[paste0(v, "_10km")]] -
+        buffer_sf[[paste0(v, "_county")]]
+    ) /
+    buffer_sf[[paste0(v, "_county")]] * 100
 }
 
+####################################
+# Percentile rank variables
 
-#Creating percentile rank vars 
-raw_collapsed <- raw_collapsed %>%
-  mutate(Pounds_5yr_perc = percent_rank(PoundsReleased_5yr_max) * 100) 
-raw_collapsed <- raw_collapsed %>%
-  mutate(Cancer_Pounds_5yr_perc = percent_rank(Cancer_PoundsReleased_5yr_max) * 100) 
-raw_collapsed <- raw_collapsed %>%
-  mutate(Dev_Pounds_5yr_perc = percent_rank(Dev_PoundsReleased_5yr_max) * 100) 
-raw_collapsed <- raw_collapsed %>%
-  mutate(Asthma_Pounds_5yr_perc = percent_rank(Asthma_PoundsReleased_5yr_max) * 100) 
+buffer_sf <- buffer_sf %>%
+  mutate(
+    Pounds_5yr_perc =
+      percent_rank(PoundsReleased_5yr_max) * 100,
+    
+    Cancer_Pounds_5yr_perc =
+      percent_rank(Cancer_PoundsReleased_5yr_max) * 100,
+    
+    Dev_Pounds_5yr_perc =
+      percent_rank(Dev_PoundsReleased_5yr_max) * 100,
+    
+    Asthma_Pounds_5yr_perc =
+      percent_rank(Asthma_PoundsReleased_5yr_max) * 100
+  )
 
-#Calculating number of health risks facility contributes to
-raw_collapsed$Health_Risk_Count <- 0
-for (i in 1:nrow(raw_collapsed)) {
-  if (raw_collapsed$Cancer_PoundsReleased_5yr_sum[i] > 0)
-    raw_collapsed$Health_Risk_Count[i] <- raw_collapsed$Health_Risk_Count[i] + 1
+####################################
+# Health risk count
+
+buffer_sf$Health_Risk_Count <- 0
+
+for (i in 1:nrow(buffer_sf)) {
   
-  if (raw_collapsed$Dev_PoundsReleased_5yr_sum[i] > 0)
-    raw_collapsed$Health_Risk_Count[i] <- raw_collapsed$Health_Risk_Count[i] + 1
+  if (buffer_sf$Cancer_PoundsReleased_5yr_sum[i] > 0)
+    buffer_sf$Health_Risk_Count[i] <-
+      buffer_sf$Health_Risk_Count[i] + 1
   
-  if (raw_collapsed$Asthma_PoundsReleased_5yr_sum[i] > 0)
-    raw_collapsed$Health_Risk_Count[i] <- raw_collapsed$Health_Risk_Count[i] + 1
+  if (buffer_sf$Dev_PoundsReleased_5yr_sum[i] > 0)
+    buffer_sf$Health_Risk_Count[i] <-
+      buffer_sf$Health_Risk_Count[i] + 1
+  
+  if (buffer_sf$Asthma_PoundsReleased_5yr_sum[i] > 0)
+    buffer_sf$Health_Risk_Count[i] <-
+      buffer_sf$Health_Risk_Count[i] + 1
 }
-
 
 ####################################
 #Cleanup & Export 
-colnames(raw_collapsed)
 
-names(raw_collapsed)[names(raw_collapsed) == "NAMELSAD"] <- "District"
+# Rename district column in chemical-level dataset
+names(raw_districts)[names(raw_districts) == "NAMELSAD"] <- "District"
 
-final= raw_collapsed %>% select(FacilityID,FacilityName,Street,City,County,State,ZIPCode,Longitude,Latitude,Chemical,PFAS,PFAS_chemicals,PoundsReleased_2018,PoundsReleased_2019,PoundsReleased_2020,PoundsReleased_2021,PoundsReleased_2022,PoundsReleased_5yr_min,PoundsReleased_5yr_sum,PoundsReleased_5yr_max,Pounds_5yr_perc,Cancer_PoundsReleased_5yr_min,Cancer_PoundsReleased_5yr_sum,Cancer_PoundsReleased_5yr_max,Cancer_Pounds_5yr_perc,Cancer_weighted_5yr_sum,Dev_PoundsReleased_5yr_min,Dev_PoundsReleased_5yr_sum,Dev_PoundsReleased_5yr_max,Dev_Pounds_5yr_perc,Dev_weighted_5yr_sum,Asthma_PoundsReleased_5yr_min,Asthma_PoundsReleased_5yr_sum,Asthma_PoundsReleased_5yr_max,Asthma_Pounds_5yr_perc,Asthma_weighted_5yr_sum,state_num_facilities,state_num_chemicals,state_sum_releases,District,GEOID,district_num_facilities,district_num_chemicals,district_sum_releases,population_10km,WhtPercent_10km,NWPercent_10km,HispPercent_10km,BlkPercent_10km,AsianPercent_10km,AmerIndPercent_10km,Under5Percent_10km,ReprodFemPercent_10km,Over64Percent_10km,EduPercent_10km,housing_units_10km,VacPercent_10km,OwnOccPercent_10km,avg_median_income_10km,avg_median_house_value_10km,population_county,WhtPercent_county,NWPercent_county,HispPercent_county,BlkPercent_county,AsianPercent_county,AmerIndPercent_county,Under5Percent_county,ReprodFemPercent_county,Over64Percent_county,EduPercent_county,housing_units_county,VacPercent_county,OwnOccPercent_county,avg_median_income_county,avg_median_house_value_county,WhtPercent_change,NWPercent_change,HispPercent_change,BlkPercent_change,AsianPercent_change,AmerIndPercent_change,Under5Percent_change,ReprodFemPercent_change,Over64Percent_change,EduPercent_change,NAICS,'10km_Pounds_sum','10km_Pounds_min','10km_Pounds_max','10km_Cancer_Pounds_sum','10km_Cancer_Pounds_min','10km_Cancer_Pounds_max','10km_Dev_Pounds_sum','10km_Dev_Pounds_min','10km_Dev_Pounds_max','10km_Asthma_Pounds_sum','10km_Asthma_Pounds_min','10km_Asthma_Pounds_max','10km_facnum', Health_Risk_Count)
+names(buffer_sf)
 
-#fix zip code issue
+#CLEAN BUFFER DATA (FIXED)
+
+buffer_df <- buffer_sf %>%
+  sf::st_drop_geometry() %>%
+  as.data.frame()
+
+buffer_df <- buffer_df %>%
+  select(
+    FacilityID,
+    
+    # buffer exposure metrics
+    starts_with("10km_"),
+    
+    # demographic levels
+    population_10km,
+    WhtPercent_10km,
+    NWPercent_10km,
+    HispPercent_10km,
+    BlkPercent_10km,
+    AsianPercent_10km,
+    AmerIndPercent_10km,
+    Under5Percent_10km,
+    ReprodFemPercent_10km,
+    Over64Percent_10km,
+    EduPercent_10km,
+    housing_units_10km,
+    VacPercent_10km,
+    OwnOccPercent_10km,
+    avg_median_income_10km,
+    avg_median_house_value_10km,
+    
+    population_county,
+    WhtPercent_county,
+    NWPercent_county,
+    HispPercent_county,
+    BlkPercent_county,
+    AsianPercent_county,
+    AmerIndPercent_county,
+    Under5Percent_county,
+    ReprodFemPercent_county,
+    Over64Percent_county,
+    EduPercent_county,
+    housing_units_county,
+    VacPercent_county,
+    OwnOccPercent_county,
+    avg_median_income_county,
+    avg_median_house_value_county,
+    
+    # derived metrics
+    Health_Risk_Count,
+    Pounds_5yr_perc,
+    Cancer_Pounds_5yr_perc,
+    Dev_Pounds_5yr_perc,
+    Asthma_Pounds_5yr_perc,
+    
+    WhtPercent_change,
+    NWPercent_change,
+    HispPercent_change,
+    BlkPercent_change,
+    AsianPercent_change,
+    AmerIndPercent_change,
+    Under5Percent_change,
+    ReprodFemPercent_change,
+    Over64Percent_change,
+    EduPercent_change,
+    
+    NAICS
+  )
+
+#JOIN BACK TO DATA
+final <- raw_districts %>%
+  left_join(buffer_df, by = "FacilityID", suffix = c("", "_buffer"))
+
+#KEEP ONLY DESIRED COLUMNS
+final <- final %>%
+  select(
+    FacilityID,
+    FacilityName,
+    Street,
+    City,
+    County,
+    State,
+    ZIPCode,
+    Longitude,
+    Latitude,
+    Chemical,
+    PFAS,
+    PFAS_chemicals,
+    PoundsReleased_2018,
+    PoundsReleased_2019,
+    PoundsReleased_2020,
+    PoundsReleased_2021,
+    PoundsReleased_2022,
+    PoundsReleased_5yr_min,
+    PoundsReleased_5yr_sum,
+    PoundsReleased_5yr_max,
+    Pounds_5yr_perc,
+    Cancer_PoundsReleased_5yr_min,
+    Cancer_PoundsReleased_5yr_sum,
+    Cancer_PoundsReleased_5yr_max,
+    Cancer_Pounds_5yr_perc,
+    Cancer_weighted_5yr_sum,
+    Dev_PoundsReleased_5yr_min,
+    Dev_PoundsReleased_5yr_sum,
+    Dev_PoundsReleased_5yr_max,
+    Dev_Pounds_5yr_perc,
+    Dev_weighted_5yr_sum,
+    Asthma_PoundsReleased_5yr_min,
+    Asthma_PoundsReleased_5yr_sum,
+    Asthma_PoundsReleased_5yr_max,
+    Asthma_Pounds_5yr_perc,
+    Asthma_weighted_5yr_sum,
+    state_num_facilities,
+    state_num_chemicals,
+    state_sum_releases,
+    District,
+    GEOID,
+    district_num_facilities,
+    district_num_chemicals,
+    district_sum_releases,
+    population_10km,
+    WhtPercent_10km,
+    NWPercent_10km,
+    HispPercent_10km,
+    BlkPercent_10km,
+    AsianPercent_10km,
+    AmerIndPercent_10km,
+    Under5Percent_10km,
+    ReprodFemPercent_10km,
+    Over64Percent_10km,
+    EduPercent_10km,
+    housing_units_10km,
+    VacPercent_10km,
+    OwnOccPercent_10km,
+    avg_median_income_10km,
+    avg_median_house_value_10km,
+    population_county,
+    WhtPercent_county,
+    NWPercent_county,
+    HispPercent_county,
+    BlkPercent_county,
+    AsianPercent_county,
+    AmerIndPercent_county,
+    Under5Percent_county,
+    ReprodFemPercent_county,
+    Over64Percent_county,
+    EduPercent_county,
+    housing_units_county,
+    VacPercent_county,
+    OwnOccPercent_county,
+    avg_median_income_county,
+    avg_median_house_value_county,
+    WhtPercent_change,
+    NWPercent_change,
+    HispPercent_change,
+    BlkPercent_change,
+    AsianPercent_change,
+    AmerIndPercent_change,
+    Under5Percent_change,
+    ReprodFemPercent_change,
+    Over64Percent_change,
+    EduPercent_change,
+    NAICS,
+    `10km_Pounds_sum`,
+    `10km_Pounds_min`,
+    `10km_Pounds_max`,
+    `10km_Cancer_Pounds_sum`,
+    `10km_Cancer_Pounds_min`,
+    `10km_Cancer_Pounds_max`,
+    `10km_Dev_Pounds_sum`,
+    `10km_Dev_Pounds_min`,
+    `10km_Dev_Pounds_max`,
+    `10km_Asthma_Pounds_sum`,
+    `10km_Asthma_Pounds_min`,
+    `10km_Asthma_Pounds_max`,
+    `10km_facnum`,
+    Health_Risk_Count
+  )
+
+# fix zip code issue
 final$ZIPCode <- as.character(final$ZIPCode)
 final$ZIPCode <- str_pad(final$ZIPCode, width = 5, side = "left", pad = "0")
 
-#Export table
-write.xlsx(st_drop_geometry(final), file = "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_PFASupdate_May2026.xlsx", rowNames = FALSE)
+# Export table
+write.xlsx(
+  st_drop_geometry(final),
+  file = "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_PFASupdate_May2026.xlsx",
+  rowNames = FALSE
+)
 
-#Export shapefile
+# Export geopackage
 gdb_path <- "~/TSCA/Fenceline Map/TSCA-Map/data/TSCA_PFASupdate_May2026.gpkg"
-st_write(final, gdb_path, driver = "GPKG", layer_options = "OVERWRITE=yes",append=FALSE)
 
-
+st_write(
+  final,
+  gdb_path,
+  driver = "GPKG",
+  layer_options = "OVERWRITE=yes",
+  append = FALSE
+)
 
 ###################################################################
 #QC code
