@@ -282,35 +282,24 @@ names(raw_districts)
 # State-level summary
 state_summary <- raw_districts %>%
   st_drop_geometry() %>%
+  distinct(State, FacilityID, PoundsReleased_5yr_sum, Chemical) %>%
   group_by(State) %>%
   summarise(
     state_num_facilities = n_distinct(FacilityID),
     state_num_chemicals = n_distinct(Chemical),
-    state_sum_releases =
-      sum(
-        distinct(
-          select(., FacilityID, PoundsReleased_5yr_sum)
-        )$PoundsReleased_5yr_sum,
-        na.rm = TRUE
-      ),
-    
+    state_sum_releases = sum(PoundsReleased_5yr_sum, na.rm = TRUE),
     .groups = "drop"
   )
 
 # District-level summary
 district_summary <- raw_districts %>%
   st_drop_geometry() %>%
+  distinct(GEOID, FacilityID, PoundsReleased_5yr_sum, Chemical) %>%
   group_by(GEOID) %>%
   summarise(
     district_num_facilities = n_distinct(FacilityID),
     district_num_chemicals = n_distinct(Chemical),
-    district_sum_releases =
-      sum(
-        distinct(
-          select(., FacilityID, PoundsReleased_5yr_sum)
-        )$PoundsReleased_5yr_sum,
-        na.rm = TRUE
-      ),
+    district_sum_releases = sum(PoundsReleased_5yr_sum, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -787,3 +776,7 @@ test2 = final %>%
 
 #testing weighting functions
 test = raw %>% select(FacilityID,Chemical,PoundsReleased_5yr_min,PoundsReleased_5yr_min,PoundsReleased_5yr_sum,Cancer_PoundsReleased_5yr_sum,Cancer_weighted_5yr_sum,Dev_weighted_5yr_sum,Asthma_weighted_5yr_sum)
+
+
+n_distinct(final$state_sum_releases)
+n_distinct(final$district_sum_releases)
